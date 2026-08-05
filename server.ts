@@ -85,6 +85,8 @@ app.post("/api/npm/ai-insights", async (req, res) => {
   }
 });
 
+export default app;
+
 async function startServer() {
   const isProduction = process.env.NODE_ENV === "production" || 
                        __filename.endsWith("server.cjs") || 
@@ -105,9 +107,11 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 startServer();
