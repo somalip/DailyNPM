@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-masthead {
+    font-family: 'UnifrakturMaguntia', 'Playfair Display', serif;
+  }
+  .font-headline {
+    font-family: 'Playfair Display', 'Georgia', serif;
+  }
+  .font-body-news {
+    font-family: 'Newsreader', 'Georgia', serif;
+  }
+  .font-mono-news {
+    font-family: 'Courier Prime', monospace;
+  }
+  .font-cinzel {
+    font-family: 'Cinzel', serif;
+  }
+  .newspaper-columns {
+    column-count: 2;
+    column-gap: 2rem;
+    column-rule: 1px dashed rgba(26, 25, 24, 0.4);
+  }
+  @media (max-width: 768px) {
+    .newspaper-columns {
+      column-count: 1;
+      column-rule: none;
+    }
+  }
+  
+  /* Ink bleed text effect */
+  .ink-bleed {
+    text-shadow: 0.3px 0.3px 0.5px rgba(26, 25, 24, 0.6), -0.3px -0.3px 0.5px rgba(26, 25, 24, 0.6);
+  }
+}
+
+html {
+  /* Sepia and paper feel applied to html viewport */
+  filter: sepia(0.08) contrast(1.03) brightness(0.99);
+}
+
+/* Custom Newspaper Styling & Rules */
+body {
+  background-color: #F3EFE0; /* Warm, aged newsprint base */
+  color: #1A1918;
+  font-family: 'Newsreader', Georgia, serif;
+  /* Newsprint dot pattern + page lines */
+  background-image: 
+    radial-gradient(#1A1918 0.5px, transparent 0.5px),
+    linear-gradient(rgba(26, 25, 24, 0.03) 1px, transparent 1px);
+  background-size: 16px 16px, 100% 24px;
+  background-position: 0 0, 0 0;
+  position: relative;
+}
+
+/* Authentic Paper Texture Overlay (Global) */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  opacity: 0.095;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+/* Vignette shadow to simulate aging/folded paper */
+html::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  box-shadow: inset 0 0 100px rgba(74, 53, 33, 0.12);
+}
+
+/* Newspaper double borders */
+.border-double-thick {
+  border-style: double;
+  border-width: 6px;
+  border-color: #1A1918;
+}
+
+.border-double-medium {
+  border-style: double;
+  border-width: 4px;
+  border-color: #1A1918;
+}
+
+.border-newspaper-thin {
+  border-color: #1A1918;
+  border-width: 1px;
+}
+
+/* Initial Drop Cap for news articles */
+.drop-cap::first-letter {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 3.8rem;
+  line-height: 3rem;
+  float: left;
+  padding-top: 6px;
+  padding-right: 10px;
+  padding-bottom: 2px;
+  font-weight: 900;
+  color: #1A1918;
+}
+
+/* Vintage Wax Stamp / Seal effect */
+.wax-stamp {
+  background: radial-gradient(circle at 30% 30%, #a62222, #731010);
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.6), 2px 2px 4px rgba(0,0,0,0.4);
+  border: 2px dashed #f2b3b3;
+}
+
+/* Newspaper Card with flat, newsprint aesthetics */
+.newspaper-card {
+  background-color: #FAF6ED; /* Brighter paper color for card surfaces */
+  border: 2px solid #1A1918;
+  box-shadow: 4px 4px 0px #1A1918;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+
+/* Slight hover effect for interactive elements keeping the flat design style */
+.newspaper-card-interactive:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px #1A1918;
+}
+
+/* Flat Modal Overlay with authentic vintage tint */
+.modal-overlay-newspaper {
+  background-color: rgba(30, 28, 26, 0.75);
+  backdrop-filter: blur(1.5px);
+  /* Halftone print mesh on overlay */
+  background-image: radial-gradient(#1a1918 1px, transparent 0px);
+  background-size: 3px 3px;
+}
+
+/* Jagged cut-out paper border effect */
+.paper-clipping {
+  position: relative;
+  background-color: #FAF6ED;
+  border: 2px solid #1A1918;
+  box-shadow: 6px 6px 0px rgba(26, 25, 24, 0.95);
+}
+
+/* Newspaper sub-rules and headers */
+.newspaper-header-banner {
+  border-top: 1px solid #1A1918;
+  border-bottom: 1px solid #1A1918;
+  padding: 4px 0;
+  margin: 6px 0;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
