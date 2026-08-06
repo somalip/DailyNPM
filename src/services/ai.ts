@@ -1,5 +1,7 @@
-// AI insights are calculated mathematically using local heuristics
-import { checkSystemRequirements } from './systemCheck.js';
+import dotenv from "dotenv";
+dotenv.config();
+
+const API_KEY = process.env.GEMINI_API_KEY;
 
 let currentModel = 'None (Local LLM disabled)';
 
@@ -53,6 +55,66 @@ export async function getAiInsights(options: {
     onProgress,
   } = options;
 
+  if (API_KEY) {
+    if (onProgress) onProgress("Consulting Gemini AI Bureau...");
+    try {
+      const prompt = `You are an expert NPM package analyst. Analyze the following package:
+Name: ${packageName}
+Description: ${description}
+Latest Version: ${version}
+Age (Days): ${ageInDays}
+Dependencies Count: ${dependenciesCount}
+Total 30-Day Downloads: ${totalDownloads}
+Readme: ${readme ? readme.slice(0, 1500) : "N/A"}
+
+Please return your response in JSON format matching this schema:
+{
+  "summary": "A brief 2-3 sentence overview of the package and its purpose.",
+  "healthScore": 85, // an integer between 0 and 100 representing package health
+  "pros": ["Pro 1", "Pro 2", "Pro 3"], // array of 2-3 key advantages
+  "cons": ["Con 1", "Con 2"], // array of 1-2 drawbacks/cautions
+  "verdict": "A concise 1-sentence uppercase editorial recommendation verdict."
+}
+
+Do not include any markdown formatting (like \`\`\`json) outside the JSON. Return only the raw JSON.`;
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Gemini API error: ${res.statusText}`);
+      }
+
+      const result = await res.json();
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error("Empty response from Gemini API");
+      }
+
+      const insights = JSON.parse(text);
+      return {
+        summary: insights.summary || "No summary generated.",
+        healthScore: typeof insights.healthScore === "number" ? insights.healthScore : 70,
+        pros: Array.isArray(insights.pros) ? insights.pros : [],
+        cons: Array.isArray(insights.cons) ? insights.cons : [],
+        verdict: insights.verdict || "PROCEED WITH CAUTION",
+        aiGenerated: true
+      };
+    } catch (err) {
+      console.error("Gemini AI API failed, falling back to heuristics:", err);
+    }
+  }
+
   if (onProgress) onProgress("Running Heuristic Analysis Bureau...");
 
   // Mathematically calculate healthScore: base score of 70, plus downloads factor, minus dependencies factor, plus age factor
@@ -102,6 +164,54 @@ export async function getAiInsights(options: {
   };
 }
 
+let chatHistory: { role: string; parts: { text: string }[] }[] = [];
+
 export async function askAi(question: string, onProgress?: (status: string) => void) {
-  return "Local AI chat is offline. LLM dependencies and transformers have been removed to optimize deployment size.";
+  if (!API_KEY) {
+    return "Local AI chat is offline. LLM dependencies and transformers have been removed to optimize deployment size. Add a GEMINI_API_KEY in your .env file to enable live Gemini AI chat.";
+  }
+
+  if (onProgress) onProgress("Gemini is thinking...");
+
+  try {
+    chatHistory.push({
+      role: "user",
+      parts: [{ text: question }]
+    });
+
+    // Keep history bounded to avoid hitting token limits in quick chat
+    if (chatHistory.length > 20) {
+      chatHistory = chatHistory.slice(-20);
+    }
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents: chatHistory
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Gemini API error: ${res.statusText}`);
+    }
+
+    const result = await res.json();
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error("Empty response from Gemini API");
+    }
+
+    chatHistory.push({
+      role: "model",
+      parts: [{ text }]
+    });
+
+    return text;
+  } catch (err: any) {
+    console.error("Gemini Chat failed:", err);
+    return `Chat error: ${err.message || "Failed to contact Gemini API"}`;
+  }
 }

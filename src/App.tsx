@@ -10,6 +10,7 @@ import { DayOfWeekChart } from './components/DayOfWeekChart';
 import { ComparisonView } from './components/ComparisonView';
 import { DependenciesModal } from './components/DependenciesModal';
 import { AIHealthCard } from './components/AIHealthCard';
+import { GithubTelemetryCard } from './components/GithubTelemetryCard';
 import { Loader2, AlertCircle, Newspaper } from 'lucide-react';
 
 const POPULAR_PACKAGES = [
@@ -204,12 +205,16 @@ export default function App() {
 
                 {/* Grid of Secondary Insights */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <DayOfWeekChart downloads={downloads} />
+                  <GithubTelemetryCard metadata={metadata} />
                   <AIHealthCard
                     insights={insights}
                     loading={insightsLoading}
                     packageName={metadata.name}
                   />
+                </div>
+
+                <div className="grid grid-cols-1 gap-8">
+                  <DayOfWeekChart downloads={downloads} />
                 </div>
 
                 {/* Dependencies Inspector Modal */}

@@ -35,6 +35,9 @@ export async function launchTui(initialPackage = 'react') {
     label: ' 📦 PACKAGE METADATA ',
     content: 'Loading package metadata...',
     tags: true,
+    scrollable: true,
+    alwaysScroll: true,
+    mouse: true,
     border: { type: 'line' },
     style: { border: { fg: 'yellow' }, label: { fg: 'yellow', bold: true } },
   });
@@ -142,7 +145,7 @@ export async function launchTui(initialPackage = 'react') {
 
   // 6. Footer Controls Bar (Row 11, Cols 0..11)
   const footerBox = grid.set(11, 0, 1, 12, blessed.box, {
-    content: ' {bold}[←/→]{/bold} Bar  •  {bold}[↑/↓]{/bold} Scroll AI  •  {bold}[S]{/bold} Search  •  {bold}[C]{/bold} Chat AI  •  {bold}[M]{/bold} Model  •  {bold}[R]{/bold} Refresh  •  {bold}[Q]{/bold} Quit ',
+    content: ' {bold}[←/→]{/bold} Bar  •  {bold}[↑/↓]{/bold} Scroll AI  •  {bold}[S]{/bold} Search  •  {bold}[C]{/bold} Chat AI  •  {bold}[Esc]{/bold} Splash  •  {bold}[M]{/bold} Model  •  {bold}[R]{/bold} Refresh  •  {bold}[Q]{/bold} Quit ',
     tags: true,
     style: { fg: 'black', bg: 'white' },
   });
@@ -270,6 +273,13 @@ export async function launchTui(initialPackage = 'react') {
       );
 
       // Render Overview Box
+      const gitText = info.github && info.github.stars > 0
+        ? `{bold}Git Telemetry:{/bold} ★ ${info.github.stars.toLocaleString()} / ⑂ ${info.github.forks.toLocaleString()}\n`
+        : '';
+      const velocityText = info.releaseVelocity
+        ? `{bold}Releases (12M):{/bold} ${info.releaseVelocity.releasesLastYear} (avg every ${info.releaseVelocity.avgDaysBetweenReleases}d)\n`
+        : '';
+
       const overviewText =
         `{bold}Name:{/bold} {cyan-fg}${info.name}{/cyan-fg}\n` +
         `{bold}Latest Version:{/bold} v${info.latestVersion}\n` +
@@ -278,6 +288,8 @@ export async function launchTui(initialPackage = 'react') {
         `{bold}Daily Pace:{/bold} ${avgDaily.toLocaleString()}/day\n` +
         `{bold}Tomorrow Forecast:{/bold} {green-fg}${reg.nextDayPredictedDownloads.toLocaleString()}{/green-fg}\n` +
         `{bold}Dependencies:{/bold} ${Object.keys(info.dependencies).length} direct / ${Object.keys(info.devDependencies).length} dev\n` +
+        gitText +
+        velocityText +
         `{bold}Age:{/bold} ${reg.packageAgeFormatted}\n\n` +
         `{cyan-fg}${info.description.slice(0, 120)}...{/cyan-fg}`;
       overviewBox.setContent(overviewText);
@@ -292,10 +304,16 @@ export async function launchTui(initialPackage = 'react') {
       const barTitles = chartDownloads.map((d: any) => d.day.slice(8)); // Short date e.g. "03", "04"
       const barData = chartDownloads.map((d: any) => d.downloads);
 
-      chartBox.setData({
-        titles: barTitles,
-        data: barData,
-      });
+      if (barData.length > 0) {
+        try {
+          chartBox.setData({
+            titles: barTitles,
+            data: barData,
+          });
+        } catch (e) {
+          console.error("TUI bar chart draw failed:", e);
+        }
+      }
 
       // Render Sparkline with extended trends (Using the full 30 days of data, not the truncated barData)
       const fullDownloadsData = downloads.map((d: any) => d.downloads);
@@ -350,11 +368,15 @@ export async function launchTui(initialPackage = 'react') {
           `{bold}Cons:{/bold} ${insights.cons.join(', ')}`;
         aiBox.setContent(aiText);
         
-        donutBox.setData([{
-          percent: insights.healthScore,
-          label: 'SCORE',
-          color: scoreColor,
-        }]);
+        try {
+          donutBox.setData([{
+            percent: insights.healthScore,
+            label: 'SCORE',
+            color: scoreColor,
+          }]);
+        } catch (e) {
+          console.error("TUI donut chart draw failed:", e);
+        }
         
         screen.render();
       }).catch((err) => {
@@ -463,6 +485,58 @@ export async function launchTui(initialPackage = 'react') {
         }
       }
     });
+  });
+
+  // ASCII Splash Screen Modal Box
+  const splashBox = blessed.box({
+    parent: screen,
+    border: 'line',
+    height: 'shrink',
+    width: 'shrink',
+    top: 'center',
+    left: 'center',
+    label: ' 📰 THE DAILY NPM - SPECIAL EDITION ',
+    tags: true,
+    hidden: true,
+    style: {
+      border: { fg: 'yellow' },
+      label: { fg: 'yellow', bold: true },
+      bg: 'black',
+    },
+  });
+
+  const asciiArt = 
+    `{yellow-fg}{bold}` +
+    `  ██████╗  █████╗ ██╗██╗  ██╗   ███╗   ██╗██████╗ ███╗   ███╗\n` +
+    `  ██╔══██╗██╔══██╗██║██║  ██║   ████╗  ██║██╔══██╗████╗ ████║\n` +
+    `  ██║  ██║███████║██║██║  ██║   ██╔██╗ ██║██████╔╝██╔████╔██║\n` +
+    `  ██║  ██║██╔══██║██║██║  ██║   ██║╚██╗██║██╔═══╝ ██║╚██╔╝██║\n` +
+    `  ██████╔╝██║  ██║██║███████║██╗██║ ╚████║██║     ██║ ╚═╝ ██║\n` +
+    `  ╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═══╝╚═╝     ╚═╝     ╚═╝\n` +
+    `{/yellow-fg}{/bold}\n` +
+    `{center}{cyan-fg}The World's Preeminent Journal of Package Intelligence & Node Statistics{/cyan-fg}{/center}\n\n` +
+    `{center}Press {bold}any key{/bold} to return to the Wire Dispatches...{/center}`;
+
+  splashBox.setContent(asciiArt);
+
+  screen.key(['escape'], () => {
+    if (splashBox.hidden) {
+      splashBox.show();
+      splashBox.focus();
+    } else {
+      splashBox.hide();
+    }
+    screen.render();
+  });
+
+  splashBox.on('element keypress', () => {
+    splashBox.hide();
+    screen.render();
+  });
+
+  splashBox.on('keypress', () => {
+    splashBox.hide();
+    screen.render();
   });
 
   // Initial Load

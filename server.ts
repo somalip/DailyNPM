@@ -1,8 +1,12 @@
 import express from "express";
 import path from "path";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { getPackageInfo, getDownloadStats, comparePackages } from "./src/services/npm.js";
 import { getAiInsights } from "./src/services/ai.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;

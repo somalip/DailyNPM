@@ -25,6 +25,19 @@ export interface PackageMetadata {
   devDependencies: Record<string, string>;
   peerDependencies: Record<string, string>;
   readme?: string;
+  github?: {
+    stars: number;
+    forks: number;
+    openIssues: number;
+    watchers: number;
+    lastCommit?: string;
+    homepage?: string;
+  };
+  releaseVelocity?: {
+    releasesLastYear: number;
+    avgDaysBetweenReleases: number;
+    daysSinceLastRelease: number;
+  };
 }
 
 export interface ForecastPoint {
@@ -65,6 +78,19 @@ export interface ComparisonPackage {
     latest: string | null;
     dependenciesCount: number;
     devDependenciesCount: number;
+    github?: {
+      stars: number;
+      forks: number;
+      openIssues: number;
+      watchers: number;
+      lastCommit?: string;
+      homepage?: string;
+    };
+    releaseVelocity?: {
+      releasesLastYear: number;
+      avgDaysBetweenReleases: number;
+      daysSinceLastRelease: number;
+    };
   } | null;
   downloads: DownloadPoint[];
   color: string;

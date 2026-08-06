@@ -65,6 +65,16 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
           {/* Article Byline */}
           <div className="font-mono-news text-xs border-y border-[#1A1918]/30 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[#4A4744]">
             <span>BY WIRE SERVICES & STAFF ANALYSTS</span>
+            {metadata.github && metadata.github.stars > 0 && (
+              <span className="font-bold text-[#A82424] flex items-center gap-0.5">
+                ★ {metadata.github.stars.toLocaleString()} STARS
+              </span>
+            )}
+            {metadata.github && metadata.github.forks > 0 && (
+              <span className="font-bold text-[#1A1918] flex items-center gap-0.5">
+                ⑂ {metadata.github.forks.toLocaleString()} FORKS
+              </span>
+            )}
             <span>PUBLISHED: {metadata.time?.latest ? formatCompactDate(metadata.time.latest) : 'RECENTLY'}</span>
             <span className="font-bold text-[#1A1918]">{metadata.license} LICENSE</span>
           </div>

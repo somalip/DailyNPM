@@ -34,6 +34,7 @@ __export(server_exports, {
 module.exports = __toCommonJS(server_exports);
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
+var import_url = require("url");
 var import_vite = require("vite");
 
 // src/services/npm.ts
@@ -48,6 +49,69 @@ function getCached(key) {
 }
 function setCache(key, data) {
   cache.set(key, { data, timestamp: Date.now() });
+}
+function parseGithubUrl(repoUrl) {
+  if (!repoUrl || typeof repoUrl !== "string") return null;
+  const cleanUrl = repoUrl.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://");
+  const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+  if (match) {
+    const owner = match[1];
+    let repo = match[2];
+    const hashIdx = repo.indexOf("#");
+    if (hashIdx !== -1) repo = repo.substring(0, hashIdx);
+    const slashIdx = repo.indexOf("/");
+    if (slashIdx !== -1) repo = repo.substring(0, slashIdx);
+    return { owner, repo };
+  }
+  return null;
+}
+async function fetchGithubStats(owner, repo) {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        "User-Agent": "DailyNPM-App"
+      }
+    });
+    if (!res.ok) {
+      if (res.status === 403 || res.status === 404) {
+        return null;
+      }
+      throw new Error(`GitHub API responded with status ${res.status}`);
+    }
+    const data = await res.json();
+    return {
+      stars: data.stargazers_count || 0,
+      forks: data.forks_count || 0,
+      openIssues: data.open_issues_count || 0,
+      watchers: data.subscribers_count || data.watchers_count || 0,
+      lastCommit: data.pushed_at || null,
+      homepage: data.homepage || null
+    };
+  } catch (err) {
+    console.error("Error fetching GitHub stats:", err);
+    return null;
+  }
+}
+function calculateReleaseVelocity(timeObj) {
+  if (!timeObj) return { releasesLastYear: 0, avgDaysBetweenReleases: 0, daysSinceLastRelease: 0 };
+  const dates = Object.entries(timeObj).filter(([k]) => k !== "created" && k !== "modified" && k !== "unsigned").map(([_, v]) => new Date(v).getTime()).sort((a, b) => b - a);
+  if (dates.length === 0) {
+    return { releasesLastYear: 0, avgDaysBetweenReleases: 0, daysSinceLastRelease: 0 };
+  }
+  const now = Date.now();
+  const oneYearAgo = now - 365 * 24 * 60 * 60 * 1e3;
+  const releasesLastYear = dates.filter((d) => d >= oneYearAgo).length;
+  let avgDaysBetweenReleases = 0;
+  if (dates.length > 1) {
+    const totalDiff = dates[0] - dates[dates.length - 1];
+    avgDaysBetweenReleases = Math.round(totalDiff / (dates.length - 1) / (1e3 * 60 * 60 * 24));
+  }
+  const daysSinceLastRelease = Math.max(0, Math.round((now - dates[0]) / (1e3 * 60 * 60 * 24)));
+  return {
+    releasesLastYear,
+    avgDaysBetweenReleases,
+    daysSinceLastRelease
+  };
 }
 async function getPackageInfo(pkgName) {
   const cacheKey = `pkg:${pkgName}`;
@@ -64,6 +128,23 @@ async function getPackageInfo(pkgName) {
   const data = await npmRes.json();
   const latestVersionTag = data["dist-tags"]?.latest || Object.keys(data.versions || {}).pop();
   const latestVersion = data.versions?.[latestVersionTag] || {};
+  const repoUrl = data.repository?.url || latestVersion.repository?.url || data.repository || latestVersion.repository;
+  const parsedRepo = parseGithubUrl(typeof repoUrl === "string" ? repoUrl : repoUrl?.url);
+  let githubStats = null;
+  if (parsedRepo) {
+    githubStats = await fetchGithubStats(parsedRepo.owner, parsedRepo.repo);
+  }
+  if (!githubStats) {
+    githubStats = {
+      stars: 0,
+      forks: 0,
+      openIssues: 0,
+      watchers: 0,
+      lastCommit: data.time?.[latestVersionTag] || data.time?.modified || null,
+      homepage: data.homepage || null
+    };
+  }
+  const releaseVelocity = calculateReleaseVelocity(data.time);
   const formattedData = {
     name: data.name,
     description: data.description || latestVersion.description || "No description provided.",
@@ -83,7 +164,9 @@ async function getPackageInfo(pkgName) {
     dependencies: latestVersion.dependencies || {},
     devDependencies: latestVersion.devDependencies || {},
     peerDependencies: latestVersion.peerDependencies || {},
-    readme: typeof data.readme === "string" ? data.readme.slice(0, 3e3) : ""
+    readme: typeof data.readme === "string" ? data.readme.slice(0, 3e3) : "",
+    github: githubStats,
+    releaseVelocity
   };
   setCache(cacheKey, formattedData);
   return formattedData;
@@ -123,6 +206,23 @@ async function comparePackages(packages, period = "last-month") {
           const raw = await infoRes.json();
           const latestTag = raw["dist-tags"]?.latest || Object.keys(raw.versions || {}).pop();
           const latestVer = raw.versions?.[latestTag] || {};
+          const releaseVelocity = calculateReleaseVelocity(raw.time);
+          const repoUrl = raw.repository?.url || latestVer.repository?.url || raw.repository || latestVer.repository;
+          const parsedRepo = parseGithubUrl(typeof repoUrl === "string" ? repoUrl : repoUrl?.url);
+          let githubStats = null;
+          if (parsedRepo) {
+            githubStats = await fetchGithubStats(parsedRepo.owner, parsedRepo.repo);
+          }
+          if (!githubStats) {
+            githubStats = {
+              stars: 0,
+              forks: 0,
+              openIssues: 0,
+              watchers: 0,
+              lastCommit: raw.time?.[latestTag] || raw.time?.modified || null,
+              homepage: raw.homepage || null
+            };
+          }
           infoData = {
             name: raw.name,
             description: raw.description || latestVer.description || "",
@@ -131,7 +231,9 @@ async function comparePackages(packages, period = "last-month") {
             created: raw.time?.created || null,
             latest: raw.time?.[latestTag] || null,
             dependenciesCount: Object.keys(latestVer.dependencies || {}).length,
-            devDependenciesCount: Object.keys(latestVer.devDependencies || {}).length
+            devDependenciesCount: Object.keys(latestVer.devDependencies || {}).length,
+            github: githubStats,
+            releaseVelocity
           };
         }
         if (dlRes.ok) {
@@ -152,6 +254,9 @@ async function comparePackages(packages, period = "last-month") {
 }
 
 // src/services/ai.ts
+var import_dotenv = __toESM(require("dotenv"), 1);
+import_dotenv.default.config();
+var API_KEY = process.env.GEMINI_API_KEY;
 function getEditorialVerdict(healthScore, ageInDays, dependenciesCount) {
   if (healthScore >= 90) {
     if (dependenciesCount <= 3) {
@@ -183,6 +288,61 @@ async function getAiInsights(options) {
     readme,
     onProgress
   } = options;
+  if (API_KEY) {
+    if (onProgress) onProgress("Consulting Gemini AI Bureau...");
+    try {
+      const prompt = `You are an expert NPM package analyst. Analyze the following package:
+Name: ${packageName}
+Description: ${description}
+Latest Version: ${version}
+Age (Days): ${ageInDays}
+Dependencies Count: ${dependenciesCount}
+Total 30-Day Downloads: ${totalDownloads}
+Readme: ${readme ? readme.slice(0, 1500) : "N/A"}
+
+Please return your response in JSON format matching this schema:
+{
+  "summary": "A brief 2-3 sentence overview of the package and its purpose.",
+  "healthScore": 85, // an integer between 0 and 100 representing package health
+  "pros": ["Pro 1", "Pro 2", "Pro 3"], // array of 2-3 key advantages
+  "cons": ["Con 1", "Con 2"], // array of 1-2 drawbacks/cautions
+  "verdict": "A concise 1-sentence uppercase editorial recommendation verdict."
+}
+
+Do not include any markdown formatting (like \`\`\`json) outside the JSON. Return only the raw JSON.`;
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`Gemini API error: ${res.statusText}`);
+      }
+      const result = await res.json();
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error("Empty response from Gemini API");
+      }
+      const insights = JSON.parse(text);
+      return {
+        summary: insights.summary || "No summary generated.",
+        healthScore: typeof insights.healthScore === "number" ? insights.healthScore : 70,
+        pros: Array.isArray(insights.pros) ? insights.pros : [],
+        cons: Array.isArray(insights.cons) ? insights.cons : [],
+        verdict: insights.verdict || "PROCEED WITH CAUTION",
+        aiGenerated: true
+      };
+    } catch (err) {
+      console.error("Gemini AI API failed, falling back to heuristics:", err);
+    }
+  }
   if (onProgress) onProgress("Running Heuristic Analysis Bureau...");
   let score = 70;
   if (totalDownloads > 1e7) score += 15;
@@ -216,6 +376,9 @@ async function getAiInsights(options) {
 }
 
 // server.ts
+var import_meta = {};
+var __filename = (0, import_url.fileURLToPath)(import_meta.url);
+var __dirname = import_path.default.dirname(__filename);
 var app = (0, import_express.default)();
 var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
 app.use(import_express.default.json());

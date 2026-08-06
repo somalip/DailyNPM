@@ -13,6 +13,80 @@ export function setCache(key: string, data: any) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
+function parseGithubUrl(repoUrl?: string | null): { owner: string; repo: string } | null {
+  if (!repoUrl || typeof repoUrl !== "string") return null;
+  const cleanUrl = repoUrl.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://");
+  const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+  if (match) {
+    const owner = match[1];
+    let repo = match[2];
+    const hashIdx = repo.indexOf("#");
+    if (hashIdx !== -1) repo = repo.substring(0, hashIdx);
+    const slashIdx = repo.indexOf("/");
+    if (slashIdx !== -1) repo = repo.substring(0, slashIdx);
+    return { owner, repo };
+  }
+  return null;
+}
+
+async function fetchGithubStats(owner: string, repo: string) {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        "User-Agent": "DailyNPM-App"
+      }
+    });
+    if (!res.ok) {
+      if (res.status === 403 || res.status === 404) {
+        return null;
+      }
+      throw new Error(`GitHub API responded with status ${res.status}`);
+    }
+    const data = await res.json();
+    return {
+      stars: data.stargazers_count || 0,
+      forks: data.forks_count || 0,
+      openIssues: data.open_issues_count || 0,
+      watchers: data.subscribers_count || data.watchers_count || 0,
+      lastCommit: data.pushed_at || null,
+      homepage: data.homepage || null
+    };
+  } catch (err) {
+    console.error("Error fetching GitHub stats:", err);
+    return null;
+  }
+}
+
+function calculateReleaseVelocity(timeObj?: Record<string, string>) {
+  if (!timeObj) return { releasesLastYear: 0, avgDaysBetweenReleases: 0, daysSinceLastRelease: 0 };
+  const dates = Object.entries(timeObj)
+    .filter(([k]) => k !== "created" && k !== "modified" && k !== "unsigned")
+    .map(([_, v]) => new Date(v).getTime())
+    .sort((a, b) => b - a);
+
+  if (dates.length === 0) {
+    return { releasesLastYear: 0, avgDaysBetweenReleases: 0, daysSinceLastRelease: 0 };
+  }
+
+  const now = Date.now();
+  const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
+  const releasesLastYear = dates.filter(d => d >= oneYearAgo).length;
+
+  let avgDaysBetweenReleases = 0;
+  if (dates.length > 1) {
+    const totalDiff = dates[0] - dates[dates.length - 1];
+    avgDaysBetweenReleases = Math.round((totalDiff / (dates.length - 1)) / (1000 * 60 * 60 * 24));
+  }
+
+  const daysSinceLastRelease = Math.max(0, Math.round((now - dates[0]) / (1000 * 60 * 60 * 24)));
+
+  return {
+    releasesLastYear,
+    avgDaysBetweenReleases,
+    daysSinceLastRelease
+  };
+}
+
 export async function getPackageInfo(pkgName: string) {
   const cacheKey = `pkg:${pkgName}`;
   const cached = getCached(cacheKey);
@@ -34,6 +108,27 @@ export async function getPackageInfo(pkgName: string) {
   const latestVersionTag = data["dist-tags"]?.latest || Object.keys(data.versions || {}).pop();
   const latestVersion = data.versions?.[latestVersionTag] || {};
 
+  const repoUrl = data.repository?.url || latestVersion.repository?.url || data.repository || latestVersion.repository;
+  const parsedRepo = parseGithubUrl(typeof repoUrl === "string" ? repoUrl : repoUrl?.url);
+
+  let githubStats = null;
+  if (parsedRepo) {
+    githubStats = await fetchGithubStats(parsedRepo.owner, parsedRepo.repo);
+  }
+
+  if (!githubStats) {
+    githubStats = {
+      stars: 0,
+      forks: 0,
+      openIssues: 0,
+      watchers: 0,
+      lastCommit: data.time?.[latestVersionTag] || data.time?.modified || null,
+      homepage: data.homepage || null
+    };
+  }
+
+  const releaseVelocity = calculateReleaseVelocity(data.time);
+
   const formattedData = {
     name: data.name,
     description: data.description || latestVersion.description || "No description provided.",
@@ -54,6 +149,8 @@ export async function getPackageInfo(pkgName: string) {
     devDependencies: latestVersion.devDependencies || {},
     peerDependencies: latestVersion.peerDependencies || {},
     readme: typeof data.readme === "string" ? data.readme.slice(0, 3000) : "",
+    github: githubStats,
+    releaseVelocity
   };
 
   setCache(cacheKey, formattedData);
@@ -108,6 +205,25 @@ export async function comparePackages(packages: string[], period = "last-month")
           const raw = await infoRes.json();
           const latestTag = raw["dist-tags"]?.latest || Object.keys(raw.versions || {}).pop();
           const latestVer = raw.versions?.[latestTag] || {};
+          
+          const releaseVelocity = calculateReleaseVelocity(raw.time);
+          const repoUrl = raw.repository?.url || latestVer.repository?.url || raw.repository || latestVer.repository;
+          const parsedRepo = parseGithubUrl(typeof repoUrl === "string" ? repoUrl : repoUrl?.url);
+          let githubStats = null;
+          if (parsedRepo) {
+            githubStats = await fetchGithubStats(parsedRepo.owner, parsedRepo.repo);
+          }
+          if (!githubStats) {
+            githubStats = {
+              stars: 0,
+              forks: 0,
+              openIssues: 0,
+              watchers: 0,
+              lastCommit: raw.time?.[latestTag] || raw.time?.modified || null,
+              homepage: raw.homepage || null
+            };
+          }
+
           infoData = {
             name: raw.name,
             description: raw.description || latestVer.description || "",
@@ -117,6 +233,8 @@ export async function comparePackages(packages: string[], period = "last-month")
             latest: raw.time?.[latestTag] || null,
             dependenciesCount: Object.keys(latestVer.dependencies || {}).length,
             devDependenciesCount: Object.keys(latestVer.devDependencies || {}).length,
+            github: githubStats,
+            releaseVelocity
           };
         }
 

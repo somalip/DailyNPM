@@ -1,5 +1,29 @@
 import { PackageMetadata, DownloadPoint, ComparisonPackage, AIInsights } from '../types';
 
+async function fetchGithubStats(owner: string, repo: string) {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        "User-Agent": "DailyNPM-App"
+      }
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    return {
+      stars: data.stargazers_count || 0,
+      forks: data.forks_count || 0,
+      openIssues: data.open_issues_count || 0,
+      watchers: data.subscribers_count || data.watchers_count || 0,
+      lastCommit: data.pushed_at || null,
+      homepage: data.homepage || null
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const POPULAR_PRESETS = [
   { label: 'UI Frameworks', packages: ['react', 'vue', 'svelte', '@angular/core'] },
   { label: 'HTTP Servers', packages: ['express', 'fastify', 'hono', 'koa'] },
@@ -60,11 +84,14 @@ export async function fetchPackageMetadata(pkgName: string): Promise<PackageMeta
     const latestVersionTag = data['dist-tags']?.latest || (data.versions ? Object.keys(data.versions).pop() : '') || 'unknown';
     const latestVersion = (data.versions && latestVersionTag) ? (data.versions[latestVersionTag] || {}) : {};
 
+    const repoUrl = (data.repository?.url ? data.repository.url.replace(/^git\+/, "").replace(/\.git$/, "") : null) || latestVersion.repository?.url || data.homepage || latestVersion.homepage;
+    const parsedRepo = parseGithubUrl(typeof repoUrl === "string" ? repoUrl : repoUrl?.url);
+
     return {
       name: data.name || cleanName,
       description: data.description || latestVersion.description || "No description provided.",
       latestVersion: latestVersionTag || "unknown",
-      homepage: data.homepage || latestVersion.homepage || (data.repository?.url ? data.repository.url.replace(/^git\+/, "").replace(/\.git$/, "") : null),
+      homepage: (data.repository?.url ? data.repository.url.replace(/^git\+/, "").replace(/\.git$/, "") : null) || latestVersion.repository?.url || data.homepage || latestVersion.homepage,
       repository: data.repository || latestVersion.repository || null,
       license: data.license || latestVersion.license || "Unspecified",
       keywords: data.keywords || latestVersion.keywords || [],
@@ -79,7 +106,23 @@ export async function fetchPackageMetadata(pkgName: string): Promise<PackageMeta
       dependencies: latestVersion.dependencies || {},
       devDependencies: latestVersion.devDependencies || {},
       peerDependencies: latestVersion.peerDependencies || {},
-      readme: typeof data.readme === "string" ? data.readme.slice(0, 3000) : "",
+readme: typeof data.readme === "string" ? data.readme.slice(0, 3000) : "",
+      github: parsedRepo ? (await fetchGithubStats(parsedRepo.owner, parsedRepo.repo)) || {
+         stars: 0,
+         forks: 0,
+         openIssues: 0,
+         watchers: 0,
+         lastCommit: data.time?.[latestVersionTag] || data.time?.modified || undefined,
+         homepage: data.homepage || undefined
+       } : {
+         stars: 0,
+         forks: 0,
+         openIssues: 0,
+         watchers: 0,
+         lastCommit: data.time?.[latestVersionTag] || data.time?.modified || undefined,
+         homepage: data.homepage || undefined
+       },
+      releaseVelocity: calculateReleaseVelocity(data.time)
     };
   }
 }
@@ -147,6 +190,8 @@ export async function comparePackagesBatch(
             const raw = await infoRes.json();
             const latestTag = raw["dist-tags"]?.latest || Object.keys(raw.versions || {}).pop();
             const latestVer = raw.versions?.[latestTag] || {};
+            const rUrl = (raw.repository?.url ? raw.repository.url.replace(/^git\+/, "").replace(/\.git$/, "") : null) || latestVer.repository?.url || raw.homepage || latestVer.homepage;
+            const pRepo = parseGithubUrl(typeof rUrl === "string" ? rUrl : rUrl?.url);
             infoData = {
               name: raw.name,
               description: raw.description || latestVer.description || "",
@@ -156,6 +201,22 @@ export async function comparePackagesBatch(
               latest: raw.time?.[latestTag] || null,
               dependenciesCount: Object.keys(latestVer.dependencies || {}).length,
               devDependenciesCount: Object.keys(latestVer.devDependencies || {}).length,
+              github: pRepo ? (await fetchGithubStats(pRepo.owner, pRepo.repo)) || {
+                 stars: 0,
+                 forks: 0,
+                 openIssues: 0,
+                 watchers: 0,
+                 lastCommit: raw.time?.[latestTag] || raw.time?.modified || undefined,
+homepage: (raw.repository?.url ? raw.repository.url.replace(/^git\+/, "").replace(/\.git$/, "") : null) || latestVer.repository?.url || raw.homepage || latestVer.homepage,
+                } : {
+                  stars: 0,
+                  forks: 0,
+                  openIssues: 0,
+                  watchers: 0,
+                  lastCommit: raw.time?.[latestTag] || raw.time?.modified || undefined,
+                  homepage: (raw.repository?.url ? raw.repository.url.replace(/^git\+/, "").replace(/\.git$/, "") : null) || latestVer.repository?.url || raw.homepage || latestVer.homepage,
+               },
+              releaseVelocity: calculateReleaseVelocity(raw.time)
             };
           }
 
@@ -286,4 +347,50 @@ export function formatCompactDate(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+function parseGithubUrl(repoUrl?: string | null): { owner: string; repo: string } | null {
+  if (!repoUrl || typeof repoUrl !== "string") return null;
+  const cleanUrl = repoUrl.replace(/^git\+/, "").replace(/\.git$/, "").replace(/^git:\/\//, "https://");
+  const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+  if (match) {
+    const owner = match[1];
+    let repo = match[2];
+    const hashIdx = repo.indexOf("#");
+    if (hashIdx !== -1) repo = repo.substring(0, hashIdx);
+    const slashIdx = repo.indexOf("/");
+    if (slashIdx !== -1) repo = repo.substring(0, slashIdx);
+    return { owner, repo };
+  }
+  return null;
+}
+
+function calculateReleaseVelocity(timeObj?: Record<string, string>) {
+  if (!timeObj) return { releasesLastYear: 0, avgDaysBetweenReleases: 0, daysSinceLastRelease: 0 };
+  const dates = Object.entries(timeObj)
+    .filter(([k]) => k !== "created" && k !== "modified" && k !== "unsigned")
+    .map(([_, v]) => new Date(v).getTime())
+    .sort((a, b) => b - a);
+
+  if (dates.length === 0) {
+    return { releasesLastYear: 0, avgDaysBetweenReleases: 0, daysSinceLastRelease: 0 };
+  }
+
+  const now = Date.now();
+  const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
+  const releasesLastYear = dates.filter(d => d >= oneYearAgo).length;
+
+  let avgDaysBetweenReleases = 0;
+  if (dates.length > 1) {
+    const totalDiff = dates[0] - dates[dates.length - 1];
+    avgDaysBetweenReleases = Math.round((totalDiff / (dates.length - 1)) / (1000 * 60 * 60 * 24));
+  }
+
+  const daysSinceLastRelease = Math.max(0, Math.round((now - dates[0]) / (1000 * 60 * 60 * 24)));
+
+  return {
+    releasesLastYear,
+    avgDaysBetweenReleases,
+    daysSinceLastRelease
+  };
 }
