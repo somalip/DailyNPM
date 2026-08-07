@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { getPackageInfo, getDownloadStats, comparePackages } from "./src/services/npm.js";
 import { getAiInsights } from "./src/services/ai.js";
+import nodemailer from "nodemailer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +87,125 @@ app.post("/api/npm/ai-insights", async (req, res) => {
   } catch (err: any) {
     console.error("Gemini AI insights error:", err);
     return res.status(500).json({ error: err.message || "AI Insights error" });
+  }
+});
+
+// --- OTP Verification Storage & Transporter ---
+interface OtpEntry {
+  otp: string;
+  expires: number;
+}
+const otpStore = new Map<string, OtpEntry>();
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "",
+  port: parseInt(process.env.SMTP_PORT || "587", 10),
+  secure: process.env.SMTP_PORT === "465",
+  auth: {
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || "",
+  },
+});
+
+// API Route: Send OTP for Email Verification
+app.post("/api/auth/send-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ error: "Valid email address is required" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    
+    // Generate a 6-digit OTP code
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 10 * 60 * 1000; // 10 minutes from now
+    
+    otpStore.set(cleanEmail, { otp, expires });
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM || '"Daily NPM" <noreply@dailynpm.com>',
+      to: cleanEmail,
+      subject: "Daily NPM - Account Verification Code",
+      text: `Your verification code is: ${otp}. It will expire in 10 minutes.`,
+      html: `
+        <div style="font-family: monospace, sans-serif; background-color: #F4F1EA; color: #1A1918; padding: 24px; border: 4px solid #1A1918; max-width: 480px; margin: 0 auto;">
+          <h2 style="font-size: 24px; font-weight: bold; border-bottom: 2px dashed #1A1918; padding-bottom: 12px; margin-bottom: 20px; text-transform: uppercase;">DAILY NPM VERIFICATION</h2>
+          <p style="font-size: 14px;">A request has been made to register a new reader portfolio access for this email address.</p>
+          <p style="font-size: 14px; font-weight: bold; margin-top: 24px;">Your One-Time Passcode (OTP):</p>
+          <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; background-color: #EAE6DF; border: 2px solid #1A1918; padding: 12px; text-align: center; margin: 16px 0;">
+            ${otp}
+          </div>
+          <p style="font-size: 11px; color: #4A4744; font-style: italic; margin-top: 24px; border-top: 1px solid #1A1918; padding-top: 12px;">
+            This security transmission is valid for 10 minutes. If you did not request this, please disregard this dispatch.
+          </p>
+        </div>
+      `,
+    };
+
+    let sent = false;
+    const smtpConfigured = !!(process.env.SMTP_USER && process.env.SMTP_PASS && process.env.SMTP_HOST);
+    
+    if (smtpConfigured) {
+      try {
+        await transporter.sendMail(mailOptions);
+        sent = true;
+      } catch (mailErr) {
+        console.error("Failed to send verification email via SMTP:", mailErr);
+      }
+    }
+
+    // Dev/Fallback mode: Always log OTP to console
+    const banner = "=".repeat(60);
+    console.log(`\n${banner}\n[SECURITY TRANSIT] Verification Code for ${cleanEmail}:\n\n      >>>   ${otp}   <<<\n\nExpires at: ${new Date(expires).toLocaleTimeString()}\nSMTP Sent: ${sent ? "YES" : "NO (FALLBACK LOGGING ACTIVE)"}\n${banner}\n`);
+
+    // In development or simulation mode, return the OTP to allow automated testing / easy local manual validation without SMTP setup.
+    const isDev = process.env.NODE_ENV !== "production";
+    
+    return res.json({ 
+      success: true, 
+      message: sent ? "Verification code sent to email." : "Verification code generated (check server console logs).",
+      devOtp: isDev ? otp : undefined 
+    });
+  } catch (err: any) {
+    console.error("Error in send-otp API:", err);
+    return res.status(500).json({ error: err.message || "Failed to process email verification code" });
+  }
+});
+
+// API Route: Verify OTP
+app.post("/api/auth/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ error: "Email and OTP verification code are required" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otp.trim();
+
+    const storedEntry = otpStore.get(cleanEmail);
+
+    if (!storedEntry) {
+      return res.status(400).json({ error: "No active verification request for this email." });
+    }
+
+    if (Date.now() > storedEntry.expires) {
+      otpStore.delete(cleanEmail);
+      return res.status(400).json({ error: "Verification code has expired. Please request a new one." });
+    }
+
+    if (storedEntry.otp !== cleanOtp) {
+      return res.status(400).json({ error: "Incorrect verification code. Please try again." });
+    }
+
+    // Verification successful - consume the OTP
+    otpStore.delete(cleanEmail);
+
+    return res.json({ success: true, message: "Email verification successful." });
+  } catch (err: any) {
+    console.error("Error in verify-otp API:", err);
+    return res.status(500).json({ error: err.message || "Failed to verify OTP code" });
   }
 });
 
