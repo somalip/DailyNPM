@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { Search, History, TrendingUp, Layers, Newspaper, Sun, User, LogOut, LogIn } from 'lucide-react';
+import { Search, History, TrendingUp, Layers, Newspaper, Sun, User, LogOut, LogIn, Terminal } from 'lucide-react';
 import { POPULAR_PRESETS } from '../utils/npmApi';
 
 interface HeaderProps {
   currentPackage: string;
   onSearch: (pkgName: string) => void;
   onLoadPreset: (packages: string[]) => void;
-  activeTab: 'overview' | 'comparison' | 'portfolio';
-  setActiveTab: (tab: 'overview' | 'comparison' | 'portfolio') => void;
+  activeTab: 'overview' | 'comparison' | 'portfolio' | 'tui';
+  setActiveTab: (tab: 'overview' | 'comparison' | 'portfolio' | 'tui') => void;
   recentSearches: string[];
   user: any;
   onOpenAuth: () => void;
@@ -179,6 +179,16 @@ export const Header: React.FC<HeaderProps> = ({
                   <User className="w-4 h-4" /> MY PORTFOLIO
                 </button>
               )}
+              <button
+                onClick={() => setActiveTab('tui')}
+                className={`flex items-center gap-1.5 px-4 py-1.5 font-mono-news text-xs uppercase font-bold transition-all ${
+                  activeTab === 'tui'
+                    ? 'bg-[#1A1918] text-white shadow-sm'
+                    : 'text-[#1A1918] hover:bg-white'
+                }`}
+              >
+                <Terminal className="w-4 h-4" /> TELEGRAPH TUI
+              </button>
             </div>
 
             {/* Auth Buttons */}

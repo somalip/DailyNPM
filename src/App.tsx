@@ -14,6 +14,7 @@ import { AIHealthCard } from './components/AIHealthCard';
 import { GithubTelemetryCard } from './components/GithubTelemetryCard';
 import { AuthModal } from './components/AuthModal';
 import { PortfolioView } from './components/PortfolioView';
+import { TuiInfoView } from './components/TuiInfoView';
 import { Loader2, AlertCircle, Newspaper, Github } from 'lucide-react';
 import { onAuthStateListener, signOutUser, trackPackage, untrackPackage } from './services/firebase';
 
@@ -32,7 +33,7 @@ const getRandomPackage = () => {
 export default function App() {
   const [currentPackage, setCurrentPackage] = useState<string>(getRandomPackage);
   const [period, setPeriod] = useState<string>('last-month');
-  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'portfolio'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'portfolio' | 'tui'>('overview');
   const [recentSearches, setRecentSearches] = useState<string[]>(['react', 'express', 'vite', 'lodash', 'tailwindcss']);
   const [comparisonSet, setComparisonSet] = useState<string[]>(['react', 'vue', 'svelte']);
 
@@ -191,7 +192,9 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {activeTab === 'portfolio' && user ? (
+        {activeTab === 'tui' ? (
+          <TuiInfoView />
+        ) : activeTab === 'portfolio' && user ? (
           <PortfolioView
             user={user}
             onSelectPackage={handleSearch}
