@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PackageMetadata, RegressionResult } from '../types';
 import { formatNumber, formatCompactDate } from '../utils/npmApi';
-import { ExternalLink, Copy, Check, Clock, GitFork, Box, Calendar, Award, ShieldCheck, Newspaper } from 'lucide-react';
+import { ExternalLink, Copy, Check, Clock, GitFork, Box, Calendar, Award, ShieldCheck, Newspaper, Bookmark, BookmarkCheck } from 'lucide-react';
 
 interface PackageHeaderProps {
   metadata: PackageMetadata;
@@ -9,6 +9,9 @@ interface PackageHeaderProps {
   total30dDownloads: number;
   avgDailyDownloads: number;
   onViewDependencies: () => void;
+  user: any;
+  isTracked: boolean;
+  onToggleTrack: () => void;
 }
 
 export const PackageHeader: React.FC<PackageHeaderProps> = ({
@@ -17,6 +20,9 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   total30dDownloads,
   avgDailyDownloads,
   onViewDependencies,
+  user,
+  isTracked,
+  onToggleTrack,
 }) => {
   const [packageManager, setPackageManager] = useState<'npm' | 'pnpm' | 'yarn' | 'bun'>('npm');
   const [copied, setCopied] = useState(false);
@@ -58,9 +64,33 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
         {/* Main Article Body */}
         <div className="space-y-4 flex-1">
           {/* Main Headline */}
-          <h2 className="font-headline text-3xl sm:text-5xl font-black tracking-tight text-[#1A1918] leading-none uppercase">
-            {metadata.name}: {metadata.description.split('.')[0] || 'A Core JavaScript Utility'}
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <h2 className="font-headline text-3xl sm:text-5xl font-black tracking-tight text-[#1A1918] leading-none uppercase flex-1">
+              {metadata.name}: {metadata.description.split('.')[0] || 'A Core JavaScript Utility'}
+            </h2>
+            <div className="shrink-0 font-mono-news">
+              {user ? (
+                <button
+                  onClick={onToggleTrack}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-[#1A1918] text-xs font-bold uppercase transition-all shadow-[2px_2px_0px_#1A1918] active:translate-x-0.5 active:translate-y-0.5 hover:shadow-none cursor-pointer ${
+                    isTracked 
+                      ? 'bg-[#1A1918] text-white hover:bg-[#A82424] hover:border-[#A82424]' 
+                      : 'bg-[#FBF9F5] text-[#1A1918] hover:bg-[#EAE6DF]'
+                  }`}
+                >
+                  {isTracked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                  {isTracked ? 'TRACKED' : 'TRACK PACKAGE'}
+                </button>
+              ) : (
+                <button
+                  onClick={onToggleTrack}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FBF9F5] text-[#1A1918]/60 border-2 border-dashed border-[#1A1918]/40 hover:border-[#1A1918] hover:text-[#1A1918] text-xs font-bold uppercase transition-all cursor-pointer"
+                >
+                  <Bookmark className="w-4 h-4" /> SIGN IN TO TRACK
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Article Byline */}
           <div className="font-mono-news text-xs border-y border-[#1A1918]/30 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[#4A4744]">

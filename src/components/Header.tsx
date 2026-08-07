@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { Search, History, TrendingUp, Layers, Newspaper, Sun, CloudRain } from 'lucide-react';
+import { Search, History, TrendingUp, Layers, Newspaper, Sun, User, LogOut, LogIn } from 'lucide-react';
 import { POPULAR_PRESETS } from '../utils/npmApi';
 
 interface HeaderProps {
   currentPackage: string;
   onSearch: (pkgName: string) => void;
   onLoadPreset: (packages: string[]) => void;
-  activeTab: 'overview' | 'comparison';
-  setActiveTab: (tab: 'overview' | 'comparison') => void;
+  activeTab: 'overview' | 'comparison' | 'portfolio';
+  setActiveTab: (tab: 'overview' | 'comparison' | 'portfolio') => void;
   recentSearches: string[];
+  user: any;
+  onOpenAuth: () => void;
+  onSignOut: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,6 +21,9 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   recentSearches,
+  user,
+  onOpenAuth,
+  onSignOut,
 }) => {
   const [inputValue, setInputValue] = useState(currentPackage);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -138,8 +144,8 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* Newspaper Sections Navigation Tabs */}
-          <div className="flex items-center gap-3">
+          {/* Newspaper Sections Navigation Tabs & User Auth */}
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center border-2 border-[#1A1918] bg-[#EAE6DF] p-0.5">
               <button
                 onClick={() => setActiveTab('overview')}
@@ -161,6 +167,43 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Layers className="w-4 h-4" /> MARKET EXCHANGE
               </button>
+              {user && (
+                <button
+                  onClick={() => setActiveTab('portfolio')}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 font-mono-news text-xs uppercase font-bold transition-all ${
+                    activeTab === 'portfolio'
+                      ? 'bg-[#1A1918] text-white shadow-sm'
+                      : 'text-[#1A1918] hover:bg-white'
+                  }`}
+                >
+                  <User className="w-4 h-4" /> MY PORTFOLIO
+                </button>
+              )}
+            </div>
+
+            {/* Auth Buttons */}
+            <div className="flex items-center font-mono-news text-xs">
+              {user ? (
+                <div className="flex items-center gap-2 border-2 border-[#1A1918] bg-[#FBF9F5] px-3 py-1.5 shadow-[2px_2px_0px_#1A1918]">
+                  <span className="font-bold uppercase tracking-tight text-[11px] max-w-[100px] truncate">
+                    {user.displayName || user.email.split('@')[0]}
+                  </span>
+                  <button 
+                    onClick={onSignOut}
+                    title="Sign Out"
+                    className="text-[#A82424] hover:text-black transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={onOpenAuth}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[#1A1918] hover:bg-[#A82424] text-white font-bold uppercase border-2 border-[#1A1918] shadow-[2px_2px_0px_#1A1918] active:translate-x-0.5 active:translate-y-0.5 hover:shadow-none transition-all cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" /> READER SIGN IN
+                </button>
+              )}
             </div>
           </div>
 
@@ -188,3 +231,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

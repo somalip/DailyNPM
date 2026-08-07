@@ -6,12 +6,16 @@ import { Header } from './components/Header';
 import { PackageHeader } from './components/PackageHeader';
 import { DownloadChart } from './components/DownloadChart';
 import { RegressionCard } from './components/RegressionCard';
+import { RegressionSimulator } from './components/RegressionSimulator';
 import { DayOfWeekChart } from './components/DayOfWeekChart';
 import { ComparisonView } from './components/ComparisonView';
 import { DependenciesModal } from './components/DependenciesModal';
 import { AIHealthCard } from './components/AIHealthCard';
 import { GithubTelemetryCard } from './components/GithubTelemetryCard';
+import { AuthModal } from './components/AuthModal';
+import { PortfolioView } from './components/PortfolioView';
 import { Loader2, AlertCircle, Newspaper } from 'lucide-react';
+import { onAuthStateListener, signOutUser, trackPackage, untrackPackage } from './services/firebase';
 
 const POPULAR_PACKAGES = [
   'react', 'express', 'vite', 'lodash', 'tailwindcss', 
@@ -28,9 +32,13 @@ const getRandomPackage = () => {
 export default function App() {
   const [currentPackage, setCurrentPackage] = useState<string>(getRandomPackage);
   const [period, setPeriod] = useState<string>('last-month');
-  const [activeTab, setActiveTab] = useState<'overview' | 'comparison'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'portfolio'>('overview');
   const [recentSearches, setRecentSearches] = useState<string[]>(['react', 'express', 'vite', 'lodash', 'tailwindcss']);
   const [comparisonSet, setComparisonSet] = useState<string[]>(['react', 'vue', 'svelte']);
+
+  // Authentication State
+  const [user, setUser] = useState<any>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // Data states
   const [loading, setLoading] = useState<boolean>(true);
@@ -46,6 +54,17 @@ export default function App() {
 
   // Modal
   const [isDepsModalOpen, setIsDepsModalOpen] = useState<boolean>(false);
+
+  // Auth State Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateListener((currentUser) => {
+      setUser(currentUser);
+      if (!currentUser && activeTab === 'portfolio') {
+        setActiveTab('overview');
+      }
+    });
+    return () => unsubscribe();
+  }, [activeTab]);
 
   const loadPackageData = async (pkgName: string, downloadPeriod: string) => {
     setLoading(true);
@@ -120,8 +139,34 @@ export default function App() {
     setActiveTab('comparison');
   };
 
+  const handleToggleTrack = async () => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    if (!metadata) return;
+
+    try {
+      const lowerName = metadata.name.toLowerCase();
+      const isCurrentlyTracked = user.watchlist?.some((p: any) => p.name.toLowerCase() === lowerName);
+      
+      let updatedWatchlist;
+      if (isCurrentlyTracked) {
+        updatedWatchlist = await untrackPackage(user.uid, metadata.name);
+      } else {
+        updatedWatchlist = await trackPackage(user.uid, metadata.name, 15);
+      }
+      
+      setUser((prev: any) => ({ ...prev, watchlist: updatedWatchlist }));
+    } catch (err) {
+      console.error("Failed to toggle track package:", err);
+    }
+  };
+
   const total30dDownloads = downloads.reduce((acc, d) => acc + d.downloads, 0);
   const avgDailyDownloads = downloads.length > 0 ? Math.round(total30dDownloads / downloads.length) : 0;
+  
+  const isTracked = user?.watchlist?.some((p: any) => p.name.toLowerCase() === metadata?.name.toLowerCase()) || false;
 
   return (
     <div className="min-h-screen text-[#1A1918] font-body-news selection:bg-[#1A1918] selection:text-white flex flex-col">
@@ -134,12 +179,28 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         recentSearches={recentSearches}
+        user={user}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onSignOut={async () => {
+          await signOutUser();
+          setActiveTab('overview');
+        }}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {activeTab === 'comparison' ? (
+        {activeTab === 'portfolio' && user ? (
+          <PortfolioView
+            user={user}
+            onSelectPackage={handleSearch}
+            onComparePackages={handleLoadPreset}
+            onRefreshWatchlist={() => {
+              // trigger user profile refresh from local state
+              setUser({ ...user });
+            }}
+          />
+        ) : activeTab === 'comparison' ? (
           <ComparisonView
             initialPackages={comparisonSet}
             onSelectMainPackage={handleSearch}
@@ -184,13 +245,15 @@ export default function App() {
                   total30dDownloads={total30dDownloads}
                   avgDailyDownloads={avgDailyDownloads}
                   onViewDependencies={() => setIsDepsModalOpen(true)}
+                  user={user}
+                  isTracked={isTracked}
+                  onToggleTrack={handleToggleTrack}
                 />
 
-                {/* Regression Prediction Engine */}
-                <RegressionCard
-                  regression={regression}
-                  modelType={modelType}
-                  setModelType={setModelType}
+                {/* Regression Simulator / Predictor */}
+                <RegressionSimulator
+                  downloads={downloads}
+                  createdDate={metadata.time?.created}
                   packageName={metadata.name}
                 />
 
@@ -238,11 +301,21 @@ export default function App() {
           <div className="flex items-center gap-2">
             <Newspaper className="w-4 h-4 text-[#A82424]" />
             <span className="font-bold uppercase text-xs">PRINTED DAILY BY THE DAILY NPM PUBLISHING CO.</span>
-            <span>• Powered by NPM Registry & AI Intelligence</span>
+            <span>• Powered by NPM Registry & Algorithms Designed by Daily NPM</span>
           </div>
           <p>© {new Date().getFullYear()} The Daily NPM • All Rights Reserved</p>
         </div>
       </footer>
+
+      {/* Auth Modal Popup */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={(authenticatedUser) => {
+          setUser(authenticatedUser);
+          setActiveTab('portfolio');
+        }}
+      />
 
     </div>
   );
