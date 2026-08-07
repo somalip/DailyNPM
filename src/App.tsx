@@ -15,7 +15,7 @@ import { GithubTelemetryCard } from './components/GithubTelemetryCard';
 import { AuthModal } from './components/AuthModal';
 import { PortfolioView } from './components/PortfolioView';
 import { TuiInfoView } from './components/TuiInfoView';
-import { Loader2, AlertCircle, Newspaper, Github } from 'lucide-react';
+import { Loader2, AlertCircle, Newspaper, Github, Shield } from 'lucide-react';
 import { onAuthStateListener, signOutUser, trackPackage, untrackPackage } from './services/firebase';
 
 const POPULAR_PACKAGES = [
@@ -56,6 +56,7 @@ export default function App() {
   // Modal
   const [isDepsModalOpen, setIsDepsModalOpen] = useState<boolean>(false);
   const [isCreditsOpen, setIsCreditsOpen] = useState<boolean>(false);
+  const [isSecurityOpen, setIsSecurityOpen] = useState<boolean>(false);
 
   // Auth State Listener
   useEffect(() => {
@@ -318,6 +319,12 @@ export default function App() {
             >
               [CREDITS DISPATCH]
             </button>
+            <button
+              onClick={() => setIsSecurityOpen(true)}
+              className="px-2.5 py-1 border border-[#1A1918] bg-[#FBF9F5] hover:bg-[#1A1918] hover:text-white transition-colors cursor-pointer uppercase font-bold text-[10px] flex items-center gap-1"
+            >
+              <Shield className="w-3 h-3 text-[#A82424]" /> [SECURITY DISPATCH]
+            </button>
             <a
               href="https://github.com/Somalip/DailyNPM"
               target="_blank"
@@ -383,6 +390,63 @@ export default function App() {
                 className="px-4 py-2 bg-[#1A1918] hover:bg-[#A82424] text-white font-bold uppercase border-2 border-[#1A1918] shadow-[2px_2px_0px_#1A1918] cursor-pointer"
               >
                 RETURN TO ARCHIVES
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Security Dispatch Modal */}
+      {isSecurityOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1918]/60 backdrop-blur-xs font-body-news">
+          <div className="relative w-full max-w-lg bg-[#F4F1EA] border-4 border-[#1A1918] shadow-[8px_8px_0px_#1A1918] p-6 text-[#1A1918]">
+            <button 
+              onClick={() => setIsSecurityOpen(false)}
+              className="absolute top-4 right-4 p-1 border-2 border-transparent hover:border-[#1A1918] bg-[#EAE6DF] hover:bg-[#A82424] hover:text-white transition-colors cursor-pointer"
+            >
+              [X]
+            </button>
+
+            <div className="text-center pb-4 mb-4 border-b-2 border-dashed border-[#1A1918]">
+              <span className="font-mono-news text-[10px] font-bold uppercase tracking-wider text-[#A82424] flex items-center justify-center gap-1">
+                <Shield className="w-3.5 h-3.5" /> • SECURITY & TELEGRAPHY DISCLAIMER •
+              </span>
+              <h2 className="font-headline text-3xl font-extrabold tracking-tight uppercase mt-1">
+                SECURITY BULLETIN
+              </h2>
+            </div>
+
+            <div className="space-y-4 font-serif text-xs leading-relaxed text-justify overflow-y-auto max-h-[60vh] pr-2">
+              <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1">
+                Firestore Security Rulebase
+              </h3>
+              <p>
+                Our infrastructure enforces strict data isolation and authorization protocols via Firestore security rules:
+              </p>
+              <ul className="list-disc pl-5 space-y-1 font-mono-news text-[11px] text-[#4A4744]">
+                <li><strong>User Isolation:</strong> Reads and writes are only permitted for authenticated owners matching the document UID (`/users/{"{userId}"}`).</li>
+                <li><strong>Input Guardrails:</strong> Display names are limited to 100 characters to prevent buffer issues.</li>
+                <li><strong>Watchlist Restrictions:</strong> A maximum of 50 tracked packages is enforced per account to prevent resource abuse.</li>
+                <li><strong>Immutability:</strong> The system locks critical credentials (UID and email) upon initial registry.</li>
+              </ul>
+
+              <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1 pt-2">
+                Disclaimer & Liability Limits
+              </h3>
+              <p>
+                <strong>The Daily NPM</strong> operates purely as a public directory analyzer. The operators of this site accept absolutely no liability for data theft, interceptive telemetry, unauthorized account access, or database breaches.
+              </p>
+              <p className="bg-[#EAE6DF] p-2 border-l-4 border-[#A82424] font-bold">
+                ⚠️ IMPORTANT WARNING: Users must exercise extreme caution. Never enter sensitive passwords, npm auth tokens, private API keys, or production configuration secrets into any interface on this site.
+              </p>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-[#1A1918] text-center font-mono-news">
+              <button
+                onClick={() => setIsSecurityOpen(false)}
+                className="px-4 py-2 bg-[#1A1918] hover:bg-[#A82424] text-white font-bold uppercase border-2 border-[#1A1918] shadow-[2px_2px_0px_#1A1918] cursor-pointer"
+              >
+                DISMISS BULLETIN
               </button>
             </div>
           </div>
