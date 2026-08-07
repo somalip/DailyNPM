@@ -1009,15 +1009,9 @@ export async function launchTui(initialPackage = 'react') {
   });
 
   const asciiArt = 
-    `{yellow-fg}{bold}` +
-    `  ██████╗  █████╗ ██╗██╗  ██╗   ███╗   ██╗██████╗ ███╗   ███╗\n` +
-    `  ██╔══██╗██╔══██╗██║██║  ██║   ████╗  ██║██╔══██╗████╗ ████║\n` +
-    `  ██║  ██║███████║██║██║  ██║   ██╔██╗ ██║██████╔╝██╔████╔██║\n` +
-    `  ██║  ██║██╔══██║██║██║  ██║   ██║╚██╗██║██╔═══╝ ██║╚██╔╝██║\n` +
-    `  ██████╔╝██║  ██║██║███████║██╗██║ ╚████║██║     ██║ ╚═╝ ██║\n` +
-    `  ╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚═╝╚═╝  ╚═══╝╚═╝     ╚═╝     ╚═╝\n` +
-    `{/yellow-fg}{/bold}\n` +
-    `{center}{cyan-fg}The World's Preeminent Journal of Package Intelligence & Node Statistics{/cyan-fg}{/center}\n\n` +
+    `\n` +
+    `{center}{yellow-fg}{bold}DAILY.NPM{/bold}{/yellow-fg}{/center}\n\n` +
+    `{center}{cyan-fg}The World's Preeminent Journal of Package Intelligence & Node Statistics{/cyan-fg}{/center}\n\n\n` +
     `{center}Press {bold}any key{/bold} to return to the Wire Dispatches...{/center}`;
 
   splashBox.setContent(asciiArt);
