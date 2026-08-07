@@ -83,25 +83,97 @@ interface SimUser {
   watchlist: TrackedPackage[];
 }
 
+// Safe Storage Fallback for Node/CLI environment
+let nodeFs: any = null;
+const NODE_DB_FILE = "./.dailynpm_sim_db.json";
+let memoryStorage: Record<string, string> = {};
+
+if (typeof window === 'undefined') {
+  try {
+    nodeFs = eval("require('fs')");
+  } catch (e) {
+    // Fallback to memory
+  }
+}
+
+function getStorageItem(key: string): string | null {
+  if (typeof localStorage !== 'undefined') {
+    return localStorage.getItem(key);
+  }
+  if (nodeFs) {
+    try {
+      if (nodeFs.existsSync(NODE_DB_FILE)) {
+        const fileContent = nodeFs.readFileSync(NODE_DB_FILE, 'utf8');
+        const db = JSON.parse(fileContent);
+        return db[key] || null;
+      }
+    } catch (e) {
+      console.warn("[Daily NPM] Failed to read TUI database:", e);
+    }
+  }
+  return memoryStorage[key] || null;
+}
+
+function setStorageItem(key: string, value: string) {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(key, value);
+    return;
+  }
+  memoryStorage[key] = value;
+  if (nodeFs) {
+    try {
+      let db: Record<string, string> = {};
+      if (nodeFs.existsSync(NODE_DB_FILE)) {
+        const fileContent = nodeFs.readFileSync(NODE_DB_FILE, 'utf8');
+        db = JSON.parse(fileContent);
+      }
+      db[key] = value;
+      nodeFs.writeFileSync(NODE_DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+    } catch (e) {
+      console.warn("[Daily NPM] Failed to write TUI database:", e);
+    }
+  }
+}
+
+function removeStorageItem(key: string) {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(key);
+    return;
+  }
+  delete memoryStorage[key];
+  if (nodeFs) {
+    try {
+      if (nodeFs.existsSync(NODE_DB_FILE)) {
+        const fileContent = nodeFs.readFileSync(NODE_DB_FILE, 'utf8');
+        const db = JSON.parse(fileContent);
+        delete db[key];
+        nodeFs.writeFileSync(NODE_DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+      }
+    } catch (e) {
+      console.warn("[Daily NPM] Failed to remove item from TUI database:", e);
+    }
+  }
+}
+
 function getSimUsers(): Record<string, SimUser> {
-  const users = localStorage.getItem(SIM_USERS_KEY);
+  const users = getStorageItem(SIM_USERS_KEY);
   return users ? JSON.parse(users) : {};
 }
 
 function saveSimUsers(users: Record<string, SimUser>) {
-  localStorage.setItem(SIM_USERS_KEY, JSON.stringify(users));
+  setStorageItem(SIM_USERS_KEY, JSON.stringify(users));
 }
 
 function getSimCurrentUser(): SimUser | null {
-  const user = localStorage.getItem(SIM_CURRENT_USER_KEY);
+  const user = getStorageItem(SIM_CURRENT_USER_KEY);
   return user ? JSON.parse(user) : null;
 }
 
 function saveSimCurrentUser(user: SimUser | null) {
   if (user) {
-    localStorage.setItem(SIM_CURRENT_USER_KEY, JSON.stringify(user));
+    setStorageItem(SIM_CURRENT_USER_KEY, JSON.stringify(user));
   } else {
-    localStorage.removeItem(SIM_CURRENT_USER_KEY);
+    removeStorageItem(SIM_CURRENT_USER_KEY);
   }
 }
 

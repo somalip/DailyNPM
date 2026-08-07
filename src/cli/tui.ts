@@ -4,6 +4,15 @@ import pc from 'picocolors';
 import { getPackageInfo, getDownloadStats } from '../services/npm.js';
 import { getAiInsights, setAiModel, askAi } from '../services/ai.js';
 import { computeDownloadRegression } from '../utils/regressionEngine.js';
+import { 
+  onAuthStateListener, 
+  signInUser, 
+  signUpUser, 
+  signOutUser, 
+  trackPackage, 
+  untrackPackage,
+  isSimulationMode
+} from '../services/firebase.js';
 
 export async function launchTui(initialPackage = 'react') {
   // Initialize Blessed Screen with mouse support
@@ -70,7 +79,6 @@ export async function launchTui(initialPackage = 'react') {
       return num.toString();
     };
     
-    // Format trend predictions compactly to prevent text wrapping
     const trendGrowth = avgVal > 0 ? ((reg.slope / avgVal) * 100).toFixed(1) : '0.0';
     const trendColor = reg.slope > 0 ? 'green-fg' : (reg.slope < 0 ? 'red-fg' : 'yellow-fg');
     const trendIcon = reg.slope > 0 ? '▲' : (reg.slope < 0 ? '▼' : '▶');
@@ -93,7 +101,7 @@ export async function launchTui(initialPackage = 'react') {
     barWidth: 2,
     barSpacing: 1,
     xOffset: 0,
-    maxHeight: 0, // CRITICAL: blessed-contrib bug causes NaN crash if this is undefined
+    maxHeight: 0,
     tags: true,
     border: { type: 'line' },
     style: { border: { fg: 'cyan' }, label: { fg: 'cyan', bold: true } },
@@ -145,7 +153,7 @@ export async function launchTui(initialPackage = 'react') {
 
   // 6. Footer Controls Bar (Row 11, Cols 0..11)
   const footerBox = grid.set(11, 0, 1, 12, blessed.box, {
-    content: ' {bold}[←/→]{/bold} Bar  •  {bold}[↑/↓]{/bold} Scroll AI  •  {bold}[S]{/bold} Search  •  {bold}[C]{/bold} Chat AI  •  {bold}[Esc]{/bold} Splash  •  {bold}[M]{/bold} Model  •  {bold}[R]{/bold} Refresh  •  {bold}[Q]{/bold} Quit ',
+    content: ' {bold}[P]{/bold} Portfolio  •  {bold}[L]{/bold} Login  •  {bold}[T]{/bold} Track  •  {bold}[U]{/bold} Simulate  •  {bold}[S]{/bold} Search  •  {bold}[C]{/bold} Chat AI  •  {bold}[M]{/bold} Model  •  {bold}[R]{/bold} Refresh  •  {bold}[Q]{/bold} Quit ',
     tags: true,
     style: { fg: 'black', bg: 'white' },
   });
@@ -205,6 +213,47 @@ export async function launchTui(initialPackage = 'react') {
     ]
   });
 
+  // Account Modals (Email / Password inputs)
+  const emailPrompt = blessed.prompt({
+    parent: screen,
+    border: 'line',
+    height: 7,
+    width: 'half',
+    top: 'center',
+    left: 'center',
+    label: ' Reader Sign In - Email ',
+    tags: true,
+    hidden: true,
+    style: { border: { fg: 'yellow' }, label: { fg: 'yellow', bold: true } },
+  });
+
+  const passwordPrompt = blessed.prompt({
+    parent: screen,
+    border: 'line',
+    height: 7,
+    width: 'half',
+    top: 'center',
+    left: 'center',
+    label: ' Reader Sign In - Password ',
+    tags: true,
+    hidden: true,
+    style: { border: { fg: 'yellow' }, label: { fg: 'yellow', bold: true } },
+  });
+
+  // Simulation prompt
+  const simPrompt = blessed.prompt({
+    parent: screen,
+    border: 'line',
+    height: 9,
+    width: 'half',
+    top: 'center',
+    left: 'center',
+    label: ' Forecast Simulation Scenarios ',
+    tags: true,
+    hidden: true,
+    style: { border: { fg: 'red' }, label: { fg: 'red', bold: true } },
+  });
+
   modelList.on('select', (item: any, index: number) => {
     modelList.hide();
     screen.render();
@@ -222,9 +271,47 @@ export async function launchTui(initialPackage = 'react') {
     screen.render();
   });
 
+  // --- APP TUI STATE ---
+  let user: any = null;
+  let viewMode: 'package' | 'portfolio' = 'package';
+  let simScenario: { type: 'none' | 'flat_add' | 'compound' | 'event_shock'; value: number } = { type: 'none', value: 0 };
+
   let currentPkgName = initialPackage;
   let activeDownloads: { day: string; downloads: number }[] = [];
   let selectedBarIdx = 0;
+
+  // Listen to Auth State
+  onAuthStateListener((currentUser) => {
+    user = currentUser;
+    updateHeader();
+  });
+
+  function updateHeader() {
+    const userLabel = user 
+      ? `{yellow-fg}READER: ${user.displayName || user.email.split('@')[0]}{/yellow-fg} [L: Account]`
+      : `[L: Sign In]`;
+    
+    const trackLabel = user 
+      ? (user.watchlist?.some((p: any) => p.name.toLowerCase() === currentPkgName.toLowerCase())
+          ? `{green-fg}[T: Tracked]{/green-fg}`
+          : `[T: Track Package]`)
+      : `[T: Sign in to track]`;
+
+    const modeLabel = viewMode === 'portfolio' 
+      ? `{magenta-fg}{bold}[Active: Portfolio]{/bold}{/magenta-fg}` 
+      : `{cyan-fg}[Active: Package Report]{/cyan-fg}`;
+
+    const simLabel = simScenario.type !== 'none'
+      ? `{red-fg}[Simulated Forecast ACTIVE]{/red-fg}`
+      : '';
+
+    headerBox.setContent(
+      `{center}{bold}THE DAILY NPM - TERMINAL EDITION{/bold}{/center}\n` +
+      `{left}Mode: ${modeLabel} │ ${userLabel} │ ${trackLabel} ${simLabel}{/left}` +
+      `{right}Inspecting: {yellow-fg}${currentPkgName.toUpperCase()}{/yellow-fg}{/right}`
+    );
+    screen.render();
+  }
 
   function updateTooltip(idx: number) {
     if (!activeDownloads || activeDownloads.length === 0) return;
@@ -245,7 +332,14 @@ export async function launchTui(initialPackage = 'react') {
     screen.render();
   }
 
+  // --- DATA LOADING & VIEW SWITCHING ---
+
   async function loadData(pkgName: string) {
+    if (viewMode === 'portfolio') {
+      await loadPortfolioData();
+      return;
+    }
+
     headerBox.setContent(
       `{center}{bold}THE DAILY NPM - TELEGRAPH WIRE{/bold}{/center}\n` +
       `{center}FETCHING WIRE DISPATCHES FOR: {yellow-fg}{bold}${pkgName}{/bold}{/yellow-fg}...{/center}`
@@ -258,7 +352,22 @@ export async function launchTui(initialPackage = 'react') {
         getDownloadStats(pkgName, 'last-month'),
       ]);
 
-      const downloads = stats.downloads || [];
+      // Apply growth vector simulation to downloads if active
+      let downloads = stats.downloads || [];
+      if (simScenario.type !== 'none') {
+        downloads = downloads.map((d: any, index: number) => {
+          let val = d.downloads;
+          if (simScenario.type === 'flat_add') {
+            val += simScenario.value * 1000;
+          } else if (simScenario.type === 'compound') {
+            val = Math.round(val * Math.pow(1 + simScenario.value / 100, index + 1));
+          } else if (simScenario.type === 'event_shock' && index >= 14) {
+            val = Math.round(val * (1 + simScenario.value / 100));
+          }
+          return { ...d, downloads: Math.max(0, val) };
+        });
+      }
+
       activeDownloads = downloads;
       selectedBarIdx = downloads.length - 1;
 
@@ -266,11 +375,16 @@ export async function launchTui(initialPackage = 'react') {
       const avgDaily = downloads.length > 0 ? Math.round(total30d / downloads.length) : 0;
       const reg = computeDownloadRegression(downloads, info.time?.created, 'seasonal_linear', 14);
 
-      // Render Header
-      headerBox.setContent(
-        `{center}{bold}THE DAILY NPM - TERMINAL EDITION{/bold}{/center}\n` +
-        `{center}SPECIAL REPORT: {yellow-fg}{bold}${info.name.toUpperCase()}{/bold}{/yellow-fg} (v${info.latestVersion})  •  LICENSE: {green-fg}${info.license}{/green-fg}{/center}`
-      );
+      // Restore widgets standard labels and visibility
+      chartBox.setLabel(' 📊 DAILY DOWNLOAD BAR CHART (←/→ TO INSPECT) ');
+      overviewBox.setLabel(' 📦 PACKAGE METADATA ');
+      sparklineBox.setLabel(' 📈 30D TREND ');
+      aiBox.setLabel(' 🧠 AI BUREAU VERDICT ');
+      donutBox.setLabel(' HEALTH ');
+      dowBox.setLabel(' 📅 WEEKDAY BUILD PACING ');
+
+      // Render Header info
+      updateHeader();
 
       // Render Overview Box
       const gitText = info.github && info.github.stars > 0
@@ -294,14 +408,13 @@ export async function launchTui(initialPackage = 'react') {
         `{cyan-fg}${info.description.slice(0, 120)}...{/cyan-fg}`;
       overviewBox.setContent(overviewText);
 
-      // Render Bar Chart Box
-      // Dynamically calculate max bars based on estimated physical terminal width (7 cols out of 12)
+      // Render Bar Chart
       const screenCols = screen.cols || 80;
       const estimatedWidth = Math.floor((7 / 12) * screenCols);
-      const maxBars = Math.max(5, Math.floor((estimatedWidth - 4) / 3)); // 3 chars per bar (2 width + 1 spacing)
+      const maxBars = Math.max(5, Math.floor((estimatedWidth - 4) / 3));
       const chartDownloads = downloads.slice(-maxBars);
 
-      const barTitles = chartDownloads.map((d: any) => d.day.slice(8)); // Short date e.g. "03", "04"
+      const barTitles = chartDownloads.map((d: any) => d.day.slice(8));
       const barData = chartDownloads.map((d: any) => d.downloads);
 
       if (barData.length > 0) {
@@ -315,13 +428,13 @@ export async function launchTui(initialPackage = 'react') {
         }
       }
 
-      // Render Sparkline with extended trends (Using the full 30 days of data, not the truncated barData)
+      // Render Sparkline
       const fullDownloadsData = downloads.map((d: any) => d.downloads);
       (sparklineBox as any).setTrendData(fullDownloadsData, reg);
 
       updateTooltip(selectedBarIdx);
 
-      // Render Day-of-Week Velocity Box
+      // Render Weekday Pacing
       const dowShorts = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
       const dowTotals = [0, 0, 0, 0, 0, 0, 0];
       const dowCounts = [0, 0, 0, 0, 0, 0, 0];
@@ -342,7 +455,7 @@ export async function launchTui(initialPackage = 'react') {
       });
       dowBox.setContent(dowText);
 
-      // Render AI Insights Box (in background)
+      // Render AI Verdict
       aiBox.setContent('{yellow-fg}Consulting AI Bureau...{/yellow-fg}');
       donutBox.setData([{ percent: 0, label: 'N/A', color: 'gray' }]);
       screen.render();
@@ -377,7 +490,6 @@ export async function launchTui(initialPackage = 'react') {
         } catch (e) {
           console.error("TUI donut chart draw failed:", e);
         }
-        
         screen.render();
       }).catch((err) => {
         aiBox.setContent(`{red-fg}AI Bureau Offline:\n${err.message || err}{/red-fg}`);
@@ -395,7 +507,7 @@ export async function launchTui(initialPackage = 'react') {
       const emptyReg = computeDownloadRegression([{day: 'error', downloads: 0}], undefined, 'seasonal_linear', 7);
       (sparklineBox as any).setTrendData([0], emptyReg);
       
-      dowBox.setData({ headers: ['Error'], data: [['---']] });
+      dowBox.setContent('{red-fg}Data calculation halted.{/red-fg}');
       aiBox.setContent(`{red-fg}Analysis halted due to fetch error.{/red-fg}`);
       donutBox.setData([{ percent: 0, label: 'Err', color: 'red' }]);
       tooltipBox.setContent('');
@@ -404,7 +516,210 @@ export async function launchTui(initialPackage = 'react') {
     screen.render();
   }
 
-  // Keyboard Arrow Navigation to Inspect Daily Downloads
+  // --- DOW NPM PORTFOLIO VIEW LOGIC ---
+
+  async function loadPortfolioData() {
+    if (!user) {
+      viewMode = 'package';
+      updateHeader();
+      loadData(currentPkgName);
+      return;
+    }
+
+    // Set layout labels for Portfolio View context
+    chartBox.setLabel(' 📊 DOW NPM INDEX (AGGREGATED WATCHLIST DOWNLOADS) ');
+    overviewBox.setLabel(' 📰 THE WATCHLIST GAZETTE (EDITORIAL WIRE) ');
+    sparklineBox.setLabel(' 📈 PORTFOLIO METRICS ');
+    aiBox.setLabel(' 🛡️ ACTIVE ALERTS & WATCHLIST ');
+    donutBox.setLabel(' HEALTH ');
+    dowBox.setLabel(' 🕒 WATCHLIST METADATA ');
+
+    overviewBox.setContent('{yellow-fg}Fetching aggregated dispatches for your watchlist...{/yellow-fg}');
+    screen.render();
+
+    const list = user.watchlist || [];
+    if (list.length === 0) {
+      overviewBox.setContent(
+        `{center}{bold}PORTFOLIO WATCHLIST IS EMPTY{/bold}{/center}\n\n` +
+        `Search for packages (press [S]) and toggle tracking (press [T]) to add them to your portfolio watchlist.`
+      );
+      chartBox.setData({ titles: ['Empty'], data: [0] });
+      sparklineBox.setContent('{center}No active tracked positions.{/center}');
+      aiBox.setContent('No assets monitored.');
+      donutBox.setData([{ percent: 0, label: 'N/A', color: 'gray' }]);
+      screen.render();
+      return;
+    }
+
+    try {
+      // Load details for all tracked items
+      const loadedDetails = await Promise.all(
+        list.map(async (p: any) => {
+          try {
+            const [meta, dl] = await Promise.all([
+              getPackageInfo(p.name),
+              getDownloadStats(p.name, 'last-month')
+            ]);
+            const downloads = dl.downloads || [];
+            
+            let weeklyChange = 0;
+            let currentDownloads = 0;
+            if (downloads.length >= 14) {
+              const sortedDls = [...downloads].sort((a: any, b: any) => a.day.localeCompare(b.day));
+              const last7 = sortedDls.slice(-7).reduce((acc: number, d: any) => acc + d.downloads, 0);
+              const prev7 = sortedDls.slice(-14, -7).reduce((acc: number, d: any) => acc + d.downloads, 0);
+              currentDownloads = last7;
+              weeklyChange = prev7 > 0 ? ((last7 - prev7) / prev7) * 100 : 0;
+            }
+
+            return {
+              name: p.name,
+              version: meta.latestVersion,
+              description: meta.description,
+              weeklyChange: Math.round(weeklyChange * 10) / 10,
+              currentDownloads,
+              downloads,
+              stars: meta.github?.stars || 0,
+              alertThreshold: p.alertThreshold
+            };
+          } catch (e) {
+            return null;
+          }
+        })
+      );
+
+      const validDetails = loadedDetails.filter(d => d !== null) as any[];
+
+      // Aggregate day-by-day downloads
+      const dayMap: Record<string, number> = {};
+      validDetails.forEach(item => {
+        item.downloads.forEach((d: any) => {
+          dayMap[d.day] = (dayMap[d.day] || 0) + d.downloads;
+        });
+      });
+
+      const aggregated = Object.entries(dayMap).map(([day, downloads]) => ({
+        day,
+        downloads
+      })).sort((a, b) => a.day.localeCompare(b.day));
+
+      activeDownloads = aggregated;
+      selectedBarIdx = aggregated.length - 1;
+
+      // Overall portfolio calculations
+      const totalVolume = aggregated.reduce((acc, pt) => acc + pt.downloads, 0);
+      let combinedWeeklyChange = 0;
+      if (aggregated.length >= 14) {
+        const last7 = aggregated.slice(-7).reduce((acc, d) => acc + d.downloads, 0);
+        const prev7 = aggregated.slice(-14, -7).reduce((acc, d) => acc + d.downloads, 0);
+        combinedWeeklyChange = prev7 > 0 ? Math.round(((last7 - prev7) / prev7) * 100 * 10) / 10 : 0;
+      }
+
+      // Render aggregate chart
+      const screenCols = screen.cols || 80;
+      const estimatedWidth = Math.floor((7 / 12) * screenCols);
+      const maxBars = Math.max(5, Math.floor((estimatedWidth - 4) / 3));
+      const chartDownloads = aggregated.slice(-maxBars);
+
+      const barTitles = chartDownloads.map((d: any) => d.day.slice(8));
+      const barData = chartDownloads.map((d: any) => d.downloads);
+
+      if (barData.length > 0) {
+        chartBox.setData({ titles: barTitles, data: barData });
+      }
+
+      // Render Portfolio stats
+      const changeColor = combinedWeeklyChange >= 0 ? 'green-fg' : 'red-fg';
+      const changeIcon = combinedWeeklyChange >= 0 ? '▲' : '▼';
+      sparklineBox.setContent(
+        `\n` +
+        `{center}{bold}DOW NPM PORTFOLIO INDEX{/bold}{/center}\n` +
+        `{center}{yellow-fg}30D Volume: ${totalVolume.toLocaleString()}{/yellow-fg}{/center}\n` +
+        `{center}{${changeColor}}Weekly WoW: ${changeIcon}${combinedWeeklyChange}%{/${changeColor}}{/center}\n` +
+        `{center}{cyan-fg}Tracked Assets: ${validDetails.length}{/cyan-fg}{/center}`
+      );
+
+      // Render Watchlist Gazette (editorial dispatches)
+      let gazetteText = '';
+      if (validDetails.length > 0) {
+        const marketDirection = combinedWeeklyChange >= 0 ? "BULLISH SURGE" : "BEARISH SHIFT";
+        gazetteText += 
+          `{center}{bold}DOW NPM DISPATCH{/bold} │ WoW: {${changeColor}}${combinedWeeklyChange}%{/${changeColor}}{/center}\n` +
+          `The combined NPM index recorded a ${marketDirection} to close at ${totalVolume.toLocaleString()} total weekly downloads. Analysts note steady builder activity.\n\n`;
+
+        const topPerformer = [...validDetails].sort((a, b) => b.weeklyChange - a.weeklyChange)[0];
+        if (topPerformer && topPerformer.weeklyChange > 0) {
+          gazetteText += 
+            `{center}{bold}SPOTLIGHT: ${topPerformer.name.toUpperCase()} LEADS MARKET{/bold}{/center}\n` +
+            `${topPerformer.name} captured substantial attention, spiking ${topPerformer.weeklyChange}% WoW. It is currently operating version v${topPerformer.version}.\n\n`;
+        }
+
+        const declining = validDetails.filter(d => d.weeklyChange < 0);
+        if (declining.length > 0) {
+          const worst = [...declining].sort((a, b) => a.weeklyChange - b.weeklyChange)[0];
+          gazetteText += 
+            `{center}{bold}RISK WIRE: ${worst.name.toUpperCase()} VOLUME DECELERATING{/bold}{/center}\n` +
+            `Downloads for the position ${worst.name} dropped by ${Math.abs(worst.weeklyChange)}% below standard baseline predictions.`;
+        } else {
+          gazetteText += 
+            `{center}{bold}ENVIRONMENTAL REPORT: MARKET STABLE{/bold}{/center}\n` +
+            `Ecosystem weather remains uniform. Minimal drops detected across the watchlist.`;
+        }
+      }
+      overviewBox.setContent(gazetteText);
+
+      // Render Watchlist & Active Alerts box
+      let alertsText = '{bold}ASSET      │ WoW % │ ALERTS ACTIVE{/bold}\n───────────┼───────┼────────────────\n';
+      let totalAlertsCount = 0;
+      validDetails.forEach(item => {
+        let alertTriggered = false;
+        let alertDesc = 'Stable';
+        
+        // 1. legacy threshold check
+        if (item.weeklyChange < -item.alertThreshold) {
+          alertTriggered = true;
+          alertDesc = `WoW Drop > ${item.alertThreshold}%`;
+        }
+
+        const ruleColor = alertTriggered ? 'red-fg' : 'green-fg';
+        const changeValColor = item.weeklyChange >= 0 ? 'green-fg' : 'red-fg';
+        const changeStr = `${item.weeklyChange >= 0 ? '+' : ''}${item.weeklyChange}%`;
+        alertsText += `{bold}${item.name.padEnd(10).slice(0, 10)}{/bold} │ {${changeValColor}}${changeStr.padEnd(5)}{/${changeValColor}} │ {${ruleColor}}${alertDesc}{/${ruleColor}}\n`;
+        
+        if (alertTriggered) totalAlertsCount++;
+      });
+      aiBox.setContent(alertsText);
+
+      // Set health score based on alerts
+      const baseHealth = Math.max(10, 100 - (totalAlertsCount * 25));
+      const donutColor = baseHealth >= 80 ? 'green' : (baseHealth >= 50 ? 'yellow' : 'red');
+      try {
+        donutBox.setData([{
+          percent: baseHealth,
+          label: 'HEALTH',
+          color: donutColor
+        }]);
+      } catch (e) {}
+
+      // Watchlist Metadata
+      let metaListText = '{bold}Watchlist Registry:{/bold}\n';
+      validDetails.forEach(item => {
+        metaListText += `• {cyan-fg}${item.name}{/cyan-fg} (v${item.version}) │ Stars: ${item.stars.toLocaleString()}\n`;
+      });
+      dowBox.setContent(metaListText);
+
+      updateTooltip(selectedBarIdx);
+
+    } catch (err: any) {
+      overviewBox.setContent(`{red-fg}Failed to load portfolio statistics:\n\n${err.message}{/red-fg}`);
+    }
+
+    screen.render();
+  }
+
+  // --- KEYBOARD & PROMPT INTERACTIONS ---
+
+  // Keyboard Navigation to Inspect Downloads
   screen.key(['left'], () => {
     if (selectedBarIdx > 0) {
       updateTooltip(selectedBarIdx - 1);
@@ -417,7 +732,7 @@ export async function launchTui(initialPackage = 'react') {
     }
   });
 
-  // Keyboard Arrow Navigation to Scroll AI Bureau
+  // Scroll AI Verdict
   screen.key(['up'], () => {
     aiBox.scroll(-1);
     screen.render();
@@ -428,47 +743,47 @@ export async function launchTui(initialPackage = 'react') {
     screen.render();
   });
 
-  // Mouse Click & Movement Support
-  chartBox.on('click', (data: any) => {
-    if (activeDownloads.length === 0) return;
-    // Estimate bar index from click X position
-    const boxLeft = typeof chartBox.left === 'number' ? chartBox.left : 0;
-    const boxWidth = typeof chartBox.width === 'number' ? chartBox.width : 1;
-    const relX = (data.x || 0) - boxLeft;
-    const estIdx = Math.floor((relX / Math.max(1, boxWidth)) * activeDownloads.length);
-    updateTooltip(estIdx);
-  });
-
-  // Keybindings
+  // Quit
   screen.key(['q', 'C-c'], () => process.exit(0));
 
-  screen.key(['r'], () => loadData(currentPkgName));
+  // Refresh
+  screen.key(['r'], () => {
+    if (viewMode === 'portfolio') {
+      loadPortfolioData();
+    } else {
+      loadData(currentPkgName);
+    }
+  });
 
+  // Search Package
   screen.key(['s'], () => {
     searchPrompt.input('Enter NPM package name:', '', (err, value) => {
       if (value && value.trim()) {
         currentPkgName = value.trim().toLowerCase();
+        viewMode = 'package';
         loadData(currentPkgName);
       }
     });
   });
 
+  // Select AI Model
   screen.key(['m'], () => {
     modelList.show();
     modelList.focus();
     screen.render();
   });
 
+  // AI Chat
   screen.key(['c'], () => {
     chatPrompt.input('Ask a question about this package:', '', async (err, value) => {
       if (value && value.trim()) {
         const userQ = value.trim();
         aiBox.setContent(aiBox.getContent() + `\n\n{cyan-fg}User: ${userQ}{/cyan-fg}`);
-        aiBox.setScrollPerc(100); // auto-scroll to bottom
+        aiBox.setScrollPerc(100);
         screen.render();
 
         try {
-          const response = await askAi(userQ, (status) => {
+          const response = await askAi(userQ, () => {
             aiBox.setLabel(` 🧠 AI BUREAU (Thinking...) `);
             screen.render();
           });
@@ -483,6 +798,194 @@ export async function launchTui(initialPackage = 'react') {
           aiBox.setScrollPerc(100);
           screen.render();
         }
+      }
+    });
+  });
+
+  // Toggle view mode (Package Report vs Portfolio Index)
+  screen.key(['p'], () => {
+    if (!user) {
+      emailPrompt.input('Sign in to view portfolio. Enter Email:', '', (err, email) => {
+        if (email && email.trim()) {
+          passwordPrompt.input('Enter Password:', '', async (err2, password) => {
+            if (password) {
+              headerBox.setContent('{center}Authenticating reader...{/center}');
+              screen.render();
+              try {
+                const authenticatedUser = await signInUser(email.trim(), password);
+                user = authenticatedUser;
+                viewMode = 'portfolio';
+                await loadPortfolioData();
+              } catch (e: any) {
+                headerBox.setContent(`{center}{red-fg}Auth failed: ${e.message}{/red-fg}{/center}`);
+                screen.render();
+                setTimeout(() => updateHeader(), 2000);
+              }
+            }
+          });
+        }
+      });
+      return;
+    }
+
+    viewMode = viewMode === 'package' ? 'portfolio' : 'package';
+    updateHeader();
+    if (viewMode === 'portfolio') {
+      loadPortfolioData();
+    } else {
+      loadData(currentPkgName);
+    }
+  });
+
+  // Login / Account Settings
+  screen.key(['l'], () => {
+    if (user) {
+      // Logged in: show profile box and offer sign out
+      const msg = `Logged in as: ${user.displayName || user.email}\n` +
+                  `Watchlist size: ${user.watchlist?.length || 0} packages\n\n` +
+                  `Press [S] to Sign Out, [C] to Cancel.`;
+      
+      const confirmBox = blessed.box({
+        parent: screen,
+        border: 'line',
+        height: 8,
+        width: 'half',
+        top: 'center',
+        left: 'center',
+        label: ' Reader Account ',
+        content: msg,
+        tags: true,
+        style: { border: { fg: 'yellow' }, label: { fg: 'yellow', bold: true } },
+      });
+      confirmBox.focus();
+      screen.render();
+
+      const handleKey = (ch: string, key: any) => {
+        if (key.name === 's') {
+          signOutUser().then(() => {
+            user = null;
+            viewMode = 'package';
+            confirmBox.destroy();
+            updateHeader();
+            loadData(currentPkgName);
+          });
+        } else if (key.name === 'c' || key.name === 'escape') {
+          confirmBox.destroy();
+          screen.render();
+        }
+      };
+      confirmBox.on('keypress', handleKey);
+      return;
+    }
+
+    // Guest: prompt to Sign In or Sign Up
+    emailPrompt.input('Enter Email Address:', '', (err, email) => {
+      if (email && email.trim()) {
+        passwordPrompt.input('Enter Password:', '', async (err2, password) => {
+          if (password) {
+            headerBox.setContent('{center}Transmitting login telegram...{/center}');
+            screen.render();
+            try {
+              const authenticatedUser = await signInUser(email.trim(), password);
+              user = authenticatedUser;
+              updateHeader();
+              loadData(currentPkgName);
+            } catch (e: any) {
+              // Sign in failed, prompt to sign up instead
+              const signUpConfirm = blessed.prompt({
+                parent: screen,
+                border: 'line',
+                height: 7,
+                width: 'half',
+                top: 'center',
+                left: 'center',
+                label: ' Account Not Found ',
+                tags: true,
+                style: { border: { fg: 'red' } }
+              });
+              signUpConfirm.input('Create new account with these credentials? (y/n):', '', async (err3, confirmText) => {
+                if (confirmText && confirmText.trim().toLowerCase() === 'y') {
+                  headerBox.setContent('{center}Creating reader profile...{/center}');
+                  screen.render();
+                  try {
+                    const newUser = await signUpUser(email.trim(), password);
+                    user = newUser;
+                    updateHeader();
+                    loadData(currentPkgName);
+                  } catch (signUpErr: any) {
+                    headerBox.setContent(`{center}{red-fg}Registration failed: ${signUpErr.message}{/red-fg}{/center}`);
+                    screen.render();
+                    setTimeout(() => updateHeader(), 2000);
+                  }
+                } else {
+                  updateHeader();
+                  loadData(currentPkgName);
+                }
+              });
+            }
+          }
+        });
+      }
+    });
+  });
+
+  // Toggle Track Package for logged in user
+  screen.key(['t'], async () => {
+    if (!user) {
+      headerBox.setContent('{center}{red-fg}Sign in using [L] first to track assets{/red-fg}{/center}');
+      screen.render();
+      setTimeout(() => updateHeader(), 2000);
+      return;
+    }
+
+    try {
+      const lowerName = currentPkgName.toLowerCase();
+      const isCurrentlyTracked = user.watchlist?.some((p: any) => p.name.toLowerCase() === lowerName);
+      
+      let updatedWatchlist;
+      if (isCurrentlyTracked) {
+        updatedWatchlist = await untrackPackage(user.uid, currentPkgName);
+        headerBox.setContent(`{center}Untracked asset: ${currentPkgName}{/center}`);
+      } else {
+        updatedWatchlist = await trackPackage(user.uid, currentPkgName, 15);
+        headerBox.setContent(`{center}{green-fg}Tracking asset: ${currentPkgName}{/green-fg}{/center}`);
+      }
+      
+      user.watchlist = updatedWatchlist;
+      updateHeader();
+      screen.render();
+      setTimeout(() => updateHeader(), 2000);
+    } catch (e: any) {
+      headerBox.setContent(`{center}{red-fg}Tracking failed: ${e.message}{/red-fg}{/center}`);
+      screen.render();
+      setTimeout(() => updateHeader(), 2000);
+    }
+  });
+
+  // Forecast Simulation prompt modal
+  screen.key(['u'], () => {
+    const scenariosText = 
+      'Select Simulation Growth Scenario:\n' +
+      '1) Flat Boost (+100k downloads/day)\n' +
+      '2) Compounding Daily Growth (+2% daily)\n' +
+      '3) Sudden Negative Shock (-30% drop starting day 14)\n' +
+      '4) None (Reset Baseline)\n' +
+      'Enter selection (1-4):';
+    
+    simPrompt.input(scenariosText, '', (err, value) => {
+      if (value) {
+        const sel = value.trim();
+        if (sel === '1') {
+          simScenario = { type: 'flat_add', value: 100 };
+        } else if (sel === '2') {
+          simScenario = { type: 'compound', value: 2 };
+        } else if (sel === '3') {
+          simScenario = { type: 'event_shock', value: -30 };
+        } else {
+          simScenario = { type: 'none', value: 0 };
+        }
+        updateHeader();
+        loadData(currentPkgName);
       }
     });
   });
@@ -519,6 +1022,7 @@ export async function launchTui(initialPackage = 'react') {
 
   splashBox.setContent(asciiArt);
 
+  // ASCII Splash Screen Toggle
   screen.key(['escape'], () => {
     if (splashBox.hidden) {
       splashBox.show();
