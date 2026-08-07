@@ -1,7 +1,7 @@
-  ==============================================================
-                         DAILY.NPM
-  ==============================================================
-  The World's Preeminent Journal of Package Intelligence & Node Statistics
+<div align="center">
+  <h1>DAILY.NPM</h1>
+  <p><i>The World's Preeminent Journal of Package Intelligence & Node Statistics</i></p>
+</div>
 
 Welcome to The Daily NPM, a premium developer intelligence platform styled after vintage newspaper prints. Built for creators, builders, and curators who need real-time data dispatches, predictive modeling, and watchlist tracking for the Node.js package ecosystem.
 
