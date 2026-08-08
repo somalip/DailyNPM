@@ -136,10 +136,10 @@ async function getPackageInfo(pkgName) {
   }
   if (!githubStats) {
     githubStats = {
-      stars: 0,
-      forks: 0,
-      openIssues: 0,
-      watchers: 0,
+      stars: null,
+      forks: null,
+      openIssues: null,
+      watchers: null,
       lastCommit: data.time?.[latestVersionTag] || data.time?.modified || null,
       homepage: data.homepage || null
     };
@@ -276,7 +276,8 @@ async function requestTieredLlmServer(options) {
           model: "ministral-3b-latest",
           messages,
           ...options.responseFormatJson ? { response_format: { type: "json_object" } } : {}
-        })
+        }),
+        signal: AbortSignal.timeout(5e3)
       });
       if (res.ok) {
         const data = await res.json();
@@ -301,7 +302,8 @@ async function requestTieredLlmServer(options) {
           model: "llama-3.1-8b-instant",
           messages,
           ...options.responseFormatJson ? { response_format: { type: "json_object" } } : {}
-        })
+        }),
+        signal: AbortSignal.timeout(5e3)
       });
       if (res.ok) {
         const data = await res.json();
@@ -328,7 +330,8 @@ async function requestTieredLlmServer(options) {
           model: "openai/gpt-4o",
           messages,
           ...options.responseFormatJson ? { response_format: { type: "json_object" } } : {}
-        })
+        }),
+        signal: AbortSignal.timeout(5e3)
       });
       if (res.ok) {
         const data = await res.json();
@@ -366,7 +369,8 @@ async function requestTieredLlmServer(options) {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(geminiPayload)
+        body: JSON.stringify(geminiPayload),
+        signal: AbortSignal.timeout(5e3)
       });
       if (res.ok) {
         const data = await res.json();
@@ -739,6 +743,9 @@ app.get("/api/npm/package/*/dependency-tree", async (req, res) => {
   }
 });
 var server_default = app;
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = app;
+}
 async function startServer() {
   const isProduction = process.env.NODE_ENV === "production" || __filename.endsWith("server.cjs") || __dirname.includes("/dist") || __dirname.includes("\\dist");
   if (!isProduction) {
