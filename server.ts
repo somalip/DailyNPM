@@ -318,6 +318,11 @@ app.get("/api/npm/package/*/dependency-tree", async (req, res) => {
 });
 
 export default app;
+// @ts-ignore
+if (typeof module !== 'undefined' && module.exports) {
+  // @ts-ignore
+  module.exports = app;
+}
 
 async function startServer() {
   const isProduction = process.env.NODE_ENV === "production" || 
