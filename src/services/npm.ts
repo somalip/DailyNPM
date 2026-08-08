@@ -118,10 +118,10 @@ export async function getPackageInfo(pkgName: string) {
 
   if (!githubStats) {
     githubStats = {
-      stars: 0,
-      forks: 0,
-      openIssues: 0,
-      watchers: 0,
+      stars: null,
+      forks: null,
+      openIssues: null,
+      watchers: null,
       lastCommit: data.time?.[latestVersionTag] || data.time?.modified || null,
       homepage: data.homepage || null
     };

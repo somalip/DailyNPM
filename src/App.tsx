@@ -284,11 +284,8 @@ export default function App() {
 
                 <div className="grid grid-cols-1 gap-8">
                   <AIChatCard
-                    packageName={metadata.name}
-                    description={metadata.description}
+                    metadata={metadata}
                     totalDownloads={downloads.reduce((acc, d) => acc + d.downloads, 0)}
-                    version={metadata.latestVersion}
-                    dependenciesCount={Object.keys(metadata.dependencies || {}).length}
                   />
                 </div>
 
@@ -442,25 +439,28 @@ export default function App() {
               </ul>
 
               <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1 pt-2">
-                LLM Safety & Key Privacy
+                LLM Safety & Bring Your Own Key (BYOK)
               </h3>
               <p>
                 Our AI integrations enforce robust browser security and privacy isolation guardrails:
               </p>
               <ul className="list-disc pl-5 space-y-1 font-mono-news text-[11px] text-[#4A4744]">
-                <li><strong>Local Storage Isolation:</strong> User-supplied custom LLM API keys are saved strictly in your local web browser's `localStorage` and never transmitted to or persisted in our backend database.</li>
-                <li><strong>Secure Backend Relay:</strong> All API key queries are proxied via a secure server-side relay, keeping your production credentials invisible to client browsers and network inspectors.</li>
-                <li><strong>Four-Tiered Cascade Fallback:</strong> Dispatches automatically roll over in a secure sequence (Mistral &rarr; Groq &rarr; OpenRouter &rarr; Gemini) to guarantee safe, high-availability execution.</li>
+                <li><strong>Local Storage Isolation:</strong> Custom LLM API keys are saved strictly in your local browser's \`localStorage\` and are never transmitted to, or persisted in, our backend databases.</li>
+                <li><strong>Direct Client Fallback:</strong> If a custom API key is supplied, the browser directly communicates with the AI providers (such as Groq) from your local device, bypassing our backend entirely.</li>
+                <li><strong>Relay Privacy:</strong> Any backend relay requests are proxied securely without logging or tracking user credentials.</li>
               </ul>
 
               <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1 pt-2">
                 Disclaimer & Liability Limits
               </h3>
               <p>
-                <strong>The Daily NPM</strong> operates purely as a public directory analyzer. The operators of this site accept absolutely no liability for data theft, interceptive telemetry, unauthorized account access, or database breaches.
+                <strong>The Daily NPM</strong> operates purely as a public directory analyzer. This product is provided "as is" and is <strong>not reliable for, and accepts absolutely no liability for, any loss of data, theft of data</strong>, interceptive telemetry, unauthorized account access, or database breaches.
               </p>
-              <p className="bg-[#EAE6DF] p-2 border-l-4 border-[#A82424] font-bold">
-                ⚠️ IMPORTANT WARNING: Users must exercise extreme caution. Never enter sensitive passwords, npm auth tokens, private API keys, or production configuration secrets into any interface on this site.
+              <p className="bg-[#EAE6DF] p-2 border-l-4 border-[#A82424] font-bold text-[10px] flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 text-[#A82424] shrink-0 mt-0.5" />
+                <span>
+                  <strong>IMPORTANT WARNING:</strong> Users must exercise extreme caution. Never enter sensitive passwords, npm auth tokens, private API keys, or production configuration secrets into any interface on this site.
+                </span>
               </p>
             </div>
 

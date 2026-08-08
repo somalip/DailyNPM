@@ -35,7 +35,8 @@ export async function requestTieredLlmServer(options: {
           model: "ministral-3b-latest",
           messages,
           ...(options.responseFormatJson ? { response_format: { type: "json_object" } } : {})
-        })
+        }),
+        signal: AbortSignal.timeout(5000)
       });
 
       if (res.ok) {
@@ -63,7 +64,8 @@ export async function requestTieredLlmServer(options: {
           model: "llama-3.1-8b-instant",
           messages,
           ...(options.responseFormatJson ? { response_format: { type: "json_object" } } : {})
-        })
+        }),
+        signal: AbortSignal.timeout(5000)
       });
 
       if (res.ok) {
@@ -93,7 +95,8 @@ export async function requestTieredLlmServer(options: {
           model: "openai/gpt-4o",
           messages,
           ...(options.responseFormatJson ? { response_format: { type: "json_object" } } : {})
-        })
+        }),
+        signal: AbortSignal.timeout(5000)
       });
 
       if (res.ok) {
@@ -138,7 +141,8 @@ export async function requestTieredLlmServer(options: {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(geminiPayload)
+        body: JSON.stringify(geminiPayload),
+        signal: AbortSignal.timeout(5000)
       });
 
       if (res.ok) {

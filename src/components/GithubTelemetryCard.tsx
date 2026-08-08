@@ -35,7 +35,7 @@ export const GithubTelemetryCard: React.FC<GithubTelemetryCardProps> = ({ metada
           <span className="opacity-70 text-[9px] uppercase font-bold block mb-1">Stars</span>
           <span className="text-xl font-black text-[#A82424] flex items-center gap-1">
             <Star className="w-4 h-4 fill-current" />
-            {github ? github.stars.toLocaleString() : 'N/A'}
+            {github && github.stars !== null && github.stars !== undefined ? github.stars.toLocaleString() : 'N/A'}
           </span>
         </div>
 
@@ -43,7 +43,7 @@ export const GithubTelemetryCard: React.FC<GithubTelemetryCardProps> = ({ metada
           <span className="opacity-70 text-[9px] uppercase font-bold block mb-1">Forks</span>
           <span className="text-xl font-black text-[#1A1918] flex items-center gap-1">
             <GitFork className="w-4 h-4" />
-            {github ? github.forks.toLocaleString() : 'N/A'}
+            {github && github.forks !== null && github.forks !== undefined ? github.forks.toLocaleString() : 'N/A'}
           </span>
         </div>
 
@@ -51,7 +51,7 @@ export const GithubTelemetryCard: React.FC<GithubTelemetryCardProps> = ({ metada
           <span className="opacity-70 text-[9px] uppercase font-bold block mb-1">Open Issues</span>
           <span className="text-xl font-black text-[#1A1918] flex items-center gap-1">
             <AlertCircle className="w-4 h-4 text-[#A82424]" />
-            {github ? github.openIssues.toLocaleString() : 'N/A'}
+            {github && github.openIssues !== null && github.openIssues !== undefined ? github.openIssues.toLocaleString() : 'N/A'}
           </span>
         </div>
 
@@ -59,7 +59,7 @@ export const GithubTelemetryCard: React.FC<GithubTelemetryCardProps> = ({ metada
           <span className="opacity-70 text-[9px] uppercase font-bold block mb-1">Watchers</span>
           <span className="text-xl font-black text-[#1A1918] flex items-center gap-1">
             <Eye className="w-4 h-4" />
-            {github ? github.watchers.toLocaleString() : 'N/A'}
+            {github && github.watchers !== null && github.watchers !== undefined ? github.watchers.toLocaleString() : 'N/A'}
           </span>
         </div>
       </div>

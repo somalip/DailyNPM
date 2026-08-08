@@ -127,19 +127,19 @@ export async function fetchPackageMetadata(pkgName: string): Promise<PackageMeta
       dependencies: latestVersion.dependencies || {},
       devDependencies: latestVersion.devDependencies || {},
       peerDependencies: latestVersion.peerDependencies || {},
-readme: typeof data.readme === "string" ? data.readme.slice(0, 3000) : "",
+      readme: typeof data.readme === "string" ? data.readme.slice(0, 3000) : "",
       github: parsedRepo ? (await fetchGithubStats(parsedRepo.owner, parsedRepo.repo)) || {
-         stars: 0,
-         forks: 0,
-         openIssues: 0,
-         watchers: 0,
+         stars: null,
+         forks: null,
+         openIssues: null,
+         watchers: null,
          lastCommit: data.time?.[latestVersionTag] || data.time?.modified || undefined,
          homepage: data.homepage || undefined
        } : {
-         stars: 0,
-         forks: 0,
-         openIssues: 0,
-         watchers: 0,
+         stars: null,
+         forks: null,
+         openIssues: null,
+         watchers: null,
          lastCommit: data.time?.[latestVersionTag] || data.time?.modified || undefined,
          homepage: data.homepage || undefined
        },
@@ -269,6 +269,36 @@ export async function requestTieredLlmClient(options: {
 }): Promise<string> {
   const customGroqKey = getGroqApiKey();
   
+  if (customGroqKey) {
+    try {
+      const messages = options.chatHistory 
+        ? (options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }, ...options.chatHistory] : options.chatHistory)
+        : [{ role: 'user', content: options.userPrompt || '' }];
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${customGroqKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages,
+          ...(options.responseFormatJson ? { response_format: { type: "json_object" } } : {})
+        }),
+        signal: AbortSignal.timeout(5000)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+    } catch (e) {
+      console.warn("Direct client-side Groq call failed, attempting server proxy fallback...", e);
+    }
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
@@ -280,7 +310,8 @@ export async function requestTieredLlmClient(options: {
   const res = await fetch('/api/npm/chat', {
     method: 'POST',
     headers,
-    body: JSON.stringify(options)
+    body: JSON.stringify(options),
+    signal: AbortSignal.timeout(10000)
   });
 
   if (!res.ok) {
