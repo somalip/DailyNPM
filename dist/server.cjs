@@ -256,7 +256,7 @@ async function comparePackages(packages, period = "last-month") {
 // src/services/ai.ts
 var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
-var API_KEY = process.env.GROQ_API_KEY || "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";
+var API_KEY = process.env.GROQ_API_KEY || "";
 async function requestTieredLlmServer(options) {
   const mistralKey = process.env.MISTRAL_API_KEY;
   const groqKey = options.customGroqKey || process.env.GROQ_API_KEY || API_KEY;

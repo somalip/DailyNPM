@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-const API_KEY = process.env.GROQ_API_KEY || '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';
+const API_KEY = process.env.GROQ_API_KEY || '';
 
 let currentModel = 'None (Local LLM disabled)';
 
