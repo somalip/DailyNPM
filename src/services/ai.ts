@@ -1,7 +1,9 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-const API_KEY = process.env.GROQ_API_KEY || '';
+function getApiKey() {
+  return process.env.GROQ_API_KEY || '';
+}
 
 let currentModel = 'None (Local LLM disabled)';
 
@@ -13,7 +15,7 @@ export async function requestTieredLlmServer(options: {
   customGroqKey?: string;
 }): Promise<string> {
   const mistralKey = process.env.MISTRAL_API_KEY;
-  const groqKey = options.customGroqKey || process.env.GROQ_API_KEY || API_KEY;
+  const groqKey = options.customGroqKey || process.env.GROQ_API_KEY || getApiKey();
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
 
@@ -209,7 +211,8 @@ export async function getAiInsights(options: {
     onProgress,
   } = options;
 
-  if (API_KEY) {
+  const hasLlmKey = !!(getApiKey() || process.env.MISTRAL_API_KEY || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
+  if (hasLlmKey) {
     if (onProgress) onProgress("Consulting Gemini AI Bureau...");
     try {
       const prompt = `You are an expert NPM package analyst. Analyze the following package:
@@ -247,7 +250,7 @@ Do not include any markdown formatting (like \`\`\`json) outside the JSON. Retur
         aiGenerated: true
       };
     } catch (err) {
-      console.error("AI API failed, falling back to heuristics:", err);
+      console.warn("AI API failed, falling back to heuristics:", err);
     }
   }
 
@@ -303,7 +306,8 @@ Do not include any markdown formatting (like \`\`\`json) outside the JSON. Retur
 let chatHistory: { role: string; content: string }[] = [];
 
 export async function askAi(question: string, onProgress?: (status: string) => void) {
-  if (!API_KEY) {
+  const hasLlmKey = !!(getApiKey() || process.env.MISTRAL_API_KEY || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
+  if (!hasLlmKey) {
     return "Local AI chat is offline. Add a GROQ_API_KEY in your .env file to enable live Groq AI chat.";
   }
 

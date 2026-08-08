@@ -155,7 +155,7 @@ program
       
       console.log(`\n${pc.bold("Verdict:")} ${pc.italic(insights.verdict)}`);
       if (!insights.aiGenerated) {
-        console.log(`\n${pc.dim("(Note: GEMINI_API_KEY was not found, showing heuristic fallback)")}`);
+        console.log(`\n${pc.dim("(Note: GROQ_API_KEY was not found, showing heuristic fallback)")}`);
       }
     } catch (err: any) {
       spinner.fail(pc.red(err.message || "Failed to fetch AI insights"));

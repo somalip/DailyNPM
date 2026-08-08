@@ -4,7 +4,7 @@ import { Terminal, Download, Copy, Check, Info, ShieldCheck, Cpu } from 'lucide-
 export const TuiInfoView: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
-  const installCmd = "npx -y dailynpm tui react";
+  const installCmd = "npm i digest-cli";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(installCmd);
@@ -14,7 +14,7 @@ export const TuiInfoView: React.FC = () => {
 
   const handleDownloadScript = () => {
     // Generate a simple bootstrap shell script
-    const scriptContent = `#!/bin/sh\n# The Daily NPM - TUI Bootstrapper\n\necho "[Telegraph wire] Bootstrapping Daily NPM Terminal User Interface..."\nnpx -y dailynpm tui react\n`;
+    const scriptContent = `#!/bin/sh\n# The Daily NPM - TUI Bootstrapper\n\necho "[Telegraph wire] Bootstrapping Daily NPM Terminal User Interface..."\nnpm install -g digest-cli && digest-cli\n`;
     const blob = new Blob([scriptContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
