@@ -1,5 +1,26 @@
 import { PackageMetadata, DownloadPoint, ComparisonPackage, AIInsights } from '../types';
 
+export function getGroqApiKey(): string {
+  if (typeof window === 'undefined') return '';
+  const saved = localStorage.getItem('dailynpm_groq_api_key');
+  return saved || '';
+}
+
+export function isUsingCustomApiKey(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!localStorage.getItem('dailynpm_groq_api_key');
+}
+
+export function setGroqApiKey(key: string) {
+  if (typeof window === 'undefined') return;
+  const trimmed = key.trim();
+  if (!trimmed) {
+    localStorage.removeItem('dailynpm_groq_api_key');
+  } else {
+    localStorage.setItem('dailynpm_groq_api_key', trimmed);
+  }
+}
+
 async function fetchGithubStats(owner: string, repo: string) {
   try {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
@@ -240,6 +261,37 @@ homepage: (raw.repository?.url ? raw.repository.url.replace(/^git\+/, "").replac
   }
 }
 
+export async function requestTieredLlmClient(options: {
+  systemPrompt?: string;
+  userPrompt?: string;
+  chatHistory?: { role: string; content: string }[];
+  responseFormatJson?: boolean;
+}): Promise<string> {
+  const customGroqKey = getGroqApiKey();
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (customGroqKey) {
+    headers['x-custom-groq-key'] = customGroqKey;
+  }
+
+  const res = await fetch('/api/npm/chat', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(options)
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Server responded with status ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  return data.text;
+}
+
 export async function fetchAIInsights(params: {
   packageName: string;
   description: string;
@@ -247,17 +299,47 @@ export async function fetchAIInsights(params: {
   version: string;
   ageInDays: number;
   dependenciesCount: number;
+  readme?: string;
 }): Promise<AIInsights> {
   try {
-    // 1. Try local express backend proxy
-    return await tryFetchJson('/api/npm/ai-insights', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
+    const prompt = `You are an expert NPM package analyst. Analyze the following package:
+Name: ${params.packageName}
+Description: ${params.description}
+Latest Version: ${params.version}
+Age (Days): ${params.ageInDays}
+Dependencies Count: ${params.dependenciesCount}
+Total 30-Day Downloads: ${params.totalDownloads}
+Readme: ${params.readme ? params.readme.slice(0, 1500) : "N/A"}
+
+Please return your response in JSON format matching this schema:
+{
+  "summary": "A brief 2-3 sentence overview of the package and its purpose.",
+  "healthScore": 85, // an integer between 0 and 100 representing package health
+  "pros": ["Pro 1", "Pro 2", "Pro 3"], // array of 2-3 key advantages
+  "cons": ["Con 1", "Con 2"], // array of 1-2 drawbacks/cautions
+  "verdict": "A concise 1-sentence uppercase editorial recommendation verdict."
+}
+
+Do not include any markdown formatting (like \`\`\`json) outside the JSON. Return only the raw JSON.`;
+
+    const text = await requestTieredLlmClient({
+      userPrompt: prompt,
+      responseFormatJson: true
     });
+
+    const insights = JSON.parse(text);
+    return {
+      summary: insights.summary || "No summary generated.",
+      healthScore: typeof insights.healthScore === "number" ? insights.healthScore : 70,
+      pros: Array.isArray(insights.pros) ? insights.pros : [],
+      cons: Array.isArray(insights.cons) ? insights.cons : [],
+      verdict: insights.verdict || "PROCEED WITH CAUTION",
+      aiGenerated: true
+    };
   } catch (e) {
-    console.warn("Local AI insights API unavailable, performing local client-side calculation", e);
-    // 2. Client-side fallback: Calculate exact heuristic insights locally
+    console.warn("Client-side Groq API call failed, falling back to heuristics:", e);
+    
+    // Heuristic fallback
     const {
       packageName,
       description,

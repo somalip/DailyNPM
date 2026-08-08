@@ -11,6 +11,7 @@ import { DayOfWeekChart } from './components/DayOfWeekChart';
 import { ComparisonView } from './components/ComparisonView';
 import { DependenciesModal } from './components/DependenciesModal';
 import { AIHealthCard } from './components/AIHealthCard';
+import { AIChatCard } from './components/AIChatCard';
 import { GithubTelemetryCard } from './components/GithubTelemetryCard';
 import { AuthModal } from './components/AuthModal';
 import { PortfolioView } from './components/PortfolioView';
@@ -282,6 +283,16 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-8">
+                  <AIChatCard
+                    packageName={metadata.name}
+                    description={metadata.description}
+                    totalDownloads={downloads.reduce((acc, d) => acc + d.downloads, 0)}
+                    version={metadata.latestVersion}
+                    dependenciesCount={Object.keys(metadata.dependencies || {}).length}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-8">
                   <DayOfWeekChart downloads={downloads} />
                 </div>
 
@@ -428,6 +439,18 @@ export default function App() {
                 <li><strong>Input Guardrails:</strong> Display names are limited to 100 characters to prevent buffer issues.</li>
                 <li><strong>Watchlist Restrictions:</strong> A maximum of 50 tracked packages is enforced per account to prevent resource abuse.</li>
                 <li><strong>Immutability:</strong> The system locks critical credentials (UID and email) upon initial registry.</li>
+              </ul>
+
+              <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1 pt-2">
+                LLM Safety & Key Privacy
+              </h3>
+              <p>
+                Our AI integrations enforce robust browser security and privacy isolation guardrails:
+              </p>
+              <ul className="list-disc pl-5 space-y-1 font-mono-news text-[11px] text-[#4A4744]">
+                <li><strong>Local Storage Isolation:</strong> User-supplied custom LLM API keys are saved strictly in your local web browser's `localStorage` and never transmitted to or persisted in our backend database.</li>
+                <li><strong>Secure Backend Relay:</strong> All API key queries are proxied via a secure server-side relay, keeping your production credentials invisible to client browsers and network inspectors.</li>
+                <li><strong>Four-Tiered Cascade Fallback:</strong> Dispatches automatically roll over in a secure sequence (Mistral &rarr; Groq &rarr; OpenRouter &rarr; Gemini) to guarantee safe, high-availability execution.</li>
               </ul>
 
               <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1 pt-2">

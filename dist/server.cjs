@@ -256,7 +256,130 @@ async function comparePackages(packages, period = "last-month") {
 // src/services/ai.ts
 var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
-var API_KEY = process.env.GEMINI_API_KEY;
+var API_KEY = process.env.GROQ_API_KEY || "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";
+async function requestTieredLlmServer(options) {
+  const mistralKey = process.env.MISTRAL_API_KEY;
+  const groqKey = options.customGroqKey || process.env.GROQ_API_KEY || API_KEY;
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const messages = options.chatHistory ? options.systemPrompt ? [{ role: "system", content: options.systemPrompt }, ...options.chatHistory] : options.chatHistory : [{ role: "user", content: options.userPrompt || "" }];
+  if (mistralKey) {
+    try {
+      console.warn("Attempting Mistral (Server Proxy)...");
+      const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${mistralKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "ministral-3b-latest",
+          messages,
+          ...options.responseFormatJson ? { response_format: { type: "json_object" } } : {}
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+      console.warn("Mistral request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("Mistral request threw exception:", e);
+    }
+  }
+  if (groqKey) {
+    try {
+      console.warn("Attempting Groq (Server Proxy)...");
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${groqKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages,
+          ...options.responseFormatJson ? { response_format: { type: "json_object" } } : {}
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+      console.warn("Groq request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("Groq request threw exception:", e);
+    }
+  }
+  if (openRouterKey) {
+    try {
+      console.warn("Falling back to OpenRouter (Server Proxy)...");
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterKey}`,
+          "HTTP-Referer": "http://localhost:3000",
+          "X-Title": "DailyNPM",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o",
+          messages,
+          ...options.responseFormatJson ? { response_format: { type: "json_object" } } : {}
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+      console.warn("OpenRouter request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("OpenRouter request threw exception:", e);
+    }
+  }
+  if (geminiKey) {
+    try {
+      console.warn("Falling back to Gemini (Server Proxy)...");
+      let contents = [];
+      if (options.chatHistory) {
+        contents = options.chatHistory.map((msg) => ({
+          role: msg.role === "assistant" || msg.role === "model" ? "model" : "user",
+          parts: [{ text: msg.content }]
+        }));
+      } else {
+        contents = [{ role: "user", parts: [{ text: options.userPrompt || "" }] }];
+      }
+      const geminiPayload = {
+        contents,
+        ...options.responseFormatJson ? { generationConfig: { responseMimeType: "application/json" } } : {}
+      };
+      if (options.systemPrompt) {
+        geminiPayload.systemInstruction = {
+          parts: [{ text: options.systemPrompt }]
+        };
+      }
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(geminiPayload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text;
+      }
+      console.warn("Gemini request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("Gemini request threw exception:", e);
+    }
+  }
+  throw new Error("All AI providers (Mistral, Groq, OpenRouter, and Gemini) failed to generate a response or keys are missing.");
+}
 function getEditorialVerdict(healthScore, ageInDays, dependenciesCount) {
   if (healthScore >= 90) {
     if (dependenciesCount <= 3) {
@@ -310,26 +433,10 @@ Please return your response in JSON format matching this schema:
 }
 
 Do not include any markdown formatting (like \`\`\`json) outside the JSON. Return only the raw JSON.`;
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json"
-          }
-        })
+      const text = await requestTieredLlmServer({
+        userPrompt: prompt,
+        responseFormatJson: true
       });
-      if (!res.ok) {
-        throw new Error(`Gemini API error: ${res.statusText}`);
-      }
-      const result = await res.json();
-      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error("Empty response from Gemini API");
-      }
       const insights = JSON.parse(text);
       return {
         summary: insights.summary || "No summary generated.",
@@ -340,7 +447,7 @@ Do not include any markdown formatting (like \`\`\`json) outside the JSON. Retur
         aiGenerated: true
       };
     } catch (err) {
-      console.error("Gemini AI API failed, falling back to heuristics:", err);
+      console.error("AI API failed, falling back to heuristics:", err);
     }
   }
   if (onProgress) onProgress("Running Heuristic Analysis Bureau...");
@@ -376,6 +483,7 @@ Do not include any markdown formatting (like \`\`\`json) outside the JSON. Retur
 }
 
 // server.ts
+var import_nodemailer = __toESM(require("nodemailer"), 1);
 var import_meta = {};
 var __filename = (0, import_url.fileURLToPath)(import_meta.url);
 var __dirname = import_path.default.dirname(__filename);
@@ -445,6 +553,189 @@ app.post("/api/npm/ai-insights", async (req, res) => {
   } catch (err) {
     console.error("Gemini AI insights error:", err);
     return res.status(500).json({ error: err.message || "AI Insights error" });
+  }
+});
+app.post("/api/npm/chat", async (req, res) => {
+  try {
+    const { systemPrompt, userPrompt, chatHistory, responseFormatJson } = req.body;
+    const customGroqKey = req.headers["x-custom-groq-key"];
+    const response = await requestTieredLlmServer({
+      systemPrompt,
+      userPrompt,
+      chatHistory,
+      responseFormatJson,
+      customGroqKey
+    });
+    return res.json({ text: response });
+  } catch (err) {
+    console.error("Secure AI completions proxy error:", err);
+    return res.status(500).json({ error: err.message || "AI completions proxy error" });
+  }
+});
+var otpStore = /* @__PURE__ */ new Map();
+var transporter = import_nodemailer.default.createTransport({
+  host: process.env.SMTP_HOST || "",
+  port: parseInt(process.env.SMTP_PORT || "587", 10),
+  secure: process.env.SMTP_PORT === "465",
+  auth: {
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || ""
+  }
+});
+app.post("/api/auth/send-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ error: "Valid email address is required" });
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const otp = Math.floor(1e5 + Math.random() * 9e5).toString();
+    const expires = Date.now() + 10 * 60 * 1e3;
+    otpStore.set(cleanEmail, { otp, expires });
+    const mailOptions = {
+      from: process.env.SMTP_FROM || '"Daily NPM" <noreply@dailynpm.com>',
+      to: cleanEmail,
+      subject: "Daily NPM - Account Verification Code",
+      text: `Your verification code is: ${otp}. It will expire in 10 minutes.`,
+      html: `
+        <div style="font-family: monospace, sans-serif; background-color: #F4F1EA; color: #1A1918; padding: 24px; border: 4px solid #1A1918; max-width: 480px; margin: 0 auto;">
+          <h2 style="font-size: 24px; font-weight: bold; border-bottom: 2px dashed #1A1918; padding-bottom: 12px; margin-bottom: 20px; text-transform: uppercase;">DAILY NPM VERIFICATION</h2>
+          <p style="font-size: 14px;">A request has been made to register a new reader portfolio access for this email address.</p>
+          <p style="font-size: 14px; font-weight: bold; margin-top: 24px;">Your One-Time Passcode (OTP):</p>
+          <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; background-color: #EAE6DF; border: 2px solid #1A1918; padding: 12px; text-align: center; margin: 16px 0;">
+            ${otp}
+          </div>
+          <p style="font-size: 11px; color: #4A4744; font-style: italic; margin-top: 24px; border-top: 1px solid #1A1918; padding-top: 12px;">
+            This security transmission is valid for 10 minutes. If you did not request this, please disregard this dispatch.
+          </p>
+        </div>
+      `
+    };
+    let sent = false;
+    const smtpConfigured = !!(process.env.SMTP_USER && process.env.SMTP_PASS && process.env.SMTP_HOST);
+    if (smtpConfigured) {
+      try {
+        await transporter.sendMail(mailOptions);
+        sent = true;
+      } catch (mailErr) {
+        console.error("Failed to send verification email via SMTP:", mailErr);
+      }
+    }
+    const banner = "=".repeat(60);
+    console.log(`
+${banner}
+[SECURITY TRANSIT] Verification Code for ${cleanEmail}:
+
+      >>>   ${otp}   <<<
+
+Expires at: ${new Date(expires).toLocaleTimeString()}
+SMTP Sent: ${sent ? "YES" : "NO (FALLBACK LOGGING ACTIVE)"}
+${banner}
+`);
+    const isDev = process.env.NODE_ENV !== "production";
+    return res.json({
+      success: true,
+      message: sent ? "Verification code sent to email." : "Verification code generated (check server console logs).",
+      devOtp: isDev ? otp : void 0
+    });
+  } catch (err) {
+    console.error("Error in send-otp API:", err);
+    return res.status(500).json({ error: err.message || "Failed to process email verification code" });
+  }
+});
+app.post("/api/auth/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ error: "Email and OTP verification code are required" });
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otp.trim();
+    const storedEntry = otpStore.get(cleanEmail);
+    if (!storedEntry) {
+      return res.status(400).json({ error: "No active verification request for this email." });
+    }
+    if (Date.now() > storedEntry.expires) {
+      otpStore.delete(cleanEmail);
+      return res.status(400).json({ error: "Verification code has expired. Please request a new one." });
+    }
+    if (storedEntry.otp !== cleanOtp) {
+      return res.status(400).json({ error: "Incorrect verification code. Please try again." });
+    }
+    otpStore.delete(cleanEmail);
+    return res.json({ success: true, message: "Email verification successful." });
+  } catch (err) {
+    console.error("Error in verify-otp API:", err);
+    return res.status(500).json({ error: err.message || "Failed to verify OTP code" });
+  }
+});
+async function buildDependencyTree(pkgName, maxDepth = 3, currentDepth = 0, resolved = /* @__PURE__ */ new Set()) {
+  const cleanName = pkgName.trim();
+  if (!cleanName || resolved.has(cleanName) || currentDepth >= maxDepth) {
+    return { name: cleanName, dependencies: [] };
+  }
+  const nextResolved = new Set(resolved);
+  nextResolved.add(cleanName);
+  try {
+    const info = await getPackageInfo(cleanName);
+    const deps = info.dependencies || {};
+    const depNames = Object.keys(deps);
+    const children = [];
+    if (currentDepth < maxDepth - 1) {
+      const limitNames = depNames.slice(0, 15);
+      const resolvedChildren = await Promise.all(
+        limitNames.map(async (depName) => {
+          const subtree = await buildDependencyTree(depName, maxDepth, currentDepth + 1, nextResolved);
+          return {
+            name: depName,
+            version: deps[depName],
+            dependencies: subtree.dependencies
+          };
+        })
+      );
+      children.push(...resolvedChildren);
+      if (depNames.length > 15) {
+        children.push({
+          name: `... and ${depNames.length - 15} more dependencies`,
+          version: "",
+          dependencies: []
+        });
+      }
+    } else {
+      depNames.forEach((depName) => {
+        children.push({
+          name: depName,
+          version: deps[depName],
+          dependencies: []
+        });
+      });
+    }
+    return {
+      name: cleanName,
+      version: info.latestVersion,
+      dependencies: children
+    };
+  } catch (err) {
+    return {
+      name: cleanName,
+      version: "unknown",
+      dependencies: [],
+      error: true
+    };
+  }
+}
+app.get("/api/npm/package/*/dependency-tree", async (req, res) => {
+  try {
+    const rawPkg = req.params[0];
+    if (!rawPkg) {
+      return res.status(400).json({ error: "Package name is required" });
+    }
+    const pkgName = rawPkg.trim();
+    const tree = await buildDependencyTree(pkgName);
+    return res.json(tree);
+  } catch (err) {
+    console.error("Error building dependency tree:", err);
+    return res.status(500).json({ error: err.message || "Server error resolving dependency tree" });
   }
 });
 var server_default = app;

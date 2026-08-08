@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Search, History, TrendingUp, Layers, Newspaper, Sun, User, LogOut, LogIn, Terminal } from 'lucide-react';
-import { POPULAR_PRESETS } from '../utils/npmApi';
+import React, { useState, useEffect } from 'react';
+import { Search, History, TrendingUp, Layers, Newspaper, Sun, User, LogOut, LogIn, Terminal, Key, X } from 'lucide-react';
+import { POPULAR_PRESETS, getGroqApiKey, setGroqApiKey, isUsingCustomApiKey } from '../utils/npmApi';
 
 interface HeaderProps {
   currentPackage: string;
@@ -27,6 +27,14 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState(currentPackage);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
+  const [hasCustomKey, setHasCustomKey] = useState(false);
+
+  useEffect(() => {
+    setHasCustomKey(isUsingCustomApiKey());
+    setKeyInput(isUsingCustomApiKey() ? getGroqApiKey() : '');
+  }, [showKeyModal]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,6 +223,22 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
             </div>
+
+            {/* Key Settings Button */}
+            <div className="flex items-center font-mono-news text-xs">
+              <button
+                onClick={() => setShowKeyModal(true)}
+                className={`px-3 py-2 border-2 border-[#1A1918] bg-[#FBF9F5] hover:bg-[#EAE6DF] transition-colors shadow-[2px_2px_0px_#1A1918] active:translate-x-0.5 active:translate-y-0.5 hover:shadow-none cursor-pointer flex items-center gap-1.5 font-bold uppercase text-[11px] font-mono-news ${
+                  hasCustomKey ? 'text-emerald-800' : 'text-[#1A1918]'
+                }`}
+                title="Configure Groq API Key"
+              >
+                <Key className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">
+                  {hasCustomKey ? 'Custom Key' : 'Default Key'}
+                </span>
+              </button>
+            </div>
           </div>
 
         </div>
@@ -238,6 +262,85 @@ export const Header: React.FC<HeaderProps> = ({
           ))}
         </div>
       </div>
+
+      {/* API Key Modal Popup */}
+      {showKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1918]/60 backdrop-blur-xs font-body-news">
+          <div className="relative w-full max-w-md bg-[#F4F1EA] border-4 border-[#1A1918] shadow-[8px_8px_0px_#1A1918] p-6 text-[#1A1918]">
+            <button 
+              onClick={() => setShowKeyModal(false)}
+              className="absolute top-4 right-4 p-1 border-2 border-transparent hover:border-[#1A1918] bg-[#EAE6DF] hover:bg-[#A82424] hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="text-center pb-4 mb-4 border-b-2 border-dashed border-[#1A1918]">
+              <span className="font-mono-news text-[10px] font-bold uppercase tracking-wider text-[#A82424]">
+                • TELEGRAM SERVICE KEY •
+              </span>
+              <h2 className="font-headline text-2xl font-extrabold tracking-tight uppercase mt-1">
+                Groq API Key Settings
+              </h2>
+              <p className="text-xs italic text-[#4A4744] mt-0.5">
+                "Configure your personal credentials for deep intelligence queries"
+              </p>
+            </div>
+
+            <div className="space-y-4 font-mono-news text-xs">
+              <div>
+                <span className="block font-bold uppercase mb-1">Current Status</span>
+                <div className="p-2 border border-[#1A1918]/30 bg-[#EAE6DF] font-bold text-center">
+                  {hasCustomKey ? (
+                    <span className="text-emerald-800">USING CUSTOM PERSISTED KEY</span>
+                  ) : (
+                    <span className="text-[#A82424]">USING DEFAULT GLOBAL KEY</span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold uppercase mb-1">Groq API Key</label>
+                <input
+                  type="password"
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  placeholder="Paste your API key here..."
+                  className="w-full bg-[#FBF9F5] border-2 border-[#1A1918] py-2 px-3 focus:outline-none focus:bg-white text-xs font-mono"
+                />
+                <span className="text-[10px] text-[#4A4744] italic mt-1 block font-body-news">
+                  Keys are stored locally in your web browser and never sent to our servers.
+                </span>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setGroqApiKey(keyInput);
+                    setHasCustomKey(!!keyInput.trim());
+                    setShowKeyModal(false);
+                  }}
+                  className="flex-1 py-2 bg-[#1A1918] hover:bg-emerald-800 text-white font-bold uppercase border-2 border-[#1A1918] shadow-[2px_2px_0px_#1A1918] hover:shadow-none transition-all cursor-pointer text-center"
+                >
+                  SAVE KEY
+                </button>
+                {hasCustomKey && (
+                  <button
+                    onClick={() => {
+                      setGroqApiKey('');
+                      setKeyInput('');
+                      setHasCustomKey(false);
+                      setShowKeyModal(false);
+                    }}
+                    className="py-2 px-4 bg-[#EAE6DF] hover:bg-[#A82424] hover:text-white text-[#1A1918] font-bold uppercase border-2 border-[#1A1918] shadow-[2px_2px_0px_#1A1918] hover:shadow-none transition-all cursor-pointer text-center"
+                  >
+                    RESET TO DEFAULT
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

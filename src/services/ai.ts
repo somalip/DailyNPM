@@ -1,9 +1,159 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-const API_KEY = process.env.GEMINI_API_KEY;
+const API_KEY = process.env.GROQ_API_KEY || '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';
 
 let currentModel = 'None (Local LLM disabled)';
+
+export async function requestTieredLlmServer(options: {
+  systemPrompt?: string;
+  userPrompt?: string;
+  chatHistory?: { role: string; content: string }[];
+  responseFormatJson?: boolean;
+  customGroqKey?: string;
+}): Promise<string> {
+  const mistralKey = process.env.MISTRAL_API_KEY;
+  const groqKey = options.customGroqKey || process.env.GROQ_API_KEY || API_KEY;
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+
+  const messages = options.chatHistory 
+    ? (options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }, ...options.chatHistory] : options.chatHistory)
+    : [{ role: 'user', content: options.userPrompt || '' }];
+
+  // 1. Try Mistral
+  if (mistralKey) {
+    try {
+      console.warn("Attempting Mistral (Server Proxy)...");
+      const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${mistralKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "ministral-3b-latest",
+          messages,
+          ...(options.responseFormatJson ? { response_format: { type: "json_object" } } : {})
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+      console.warn("Mistral request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("Mistral request threw exception:", e);
+    }
+  }
+
+  // 2. Try Groq
+  if (groqKey) {
+    try {
+      console.warn("Attempting Groq (Server Proxy)...");
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${groqKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages,
+          ...(options.responseFormatJson ? { response_format: { type: "json_object" } } : {})
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+      console.warn("Groq request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("Groq request threw exception:", e);
+    }
+  }
+
+  // 3. Try OpenRouter (GPT-4o)
+  if (openRouterKey) {
+    try {
+      console.warn("Falling back to OpenRouter (Server Proxy)...");
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterKey}`,
+          "HTTP-Referer": 'http://localhost:3000',
+          "X-Title": 'DailyNPM',
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o",
+          messages,
+          ...(options.responseFormatJson ? { response_format: { type: "json_object" } } : {})
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      }
+      console.warn("OpenRouter request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("OpenRouter request threw exception:", e);
+    }
+  }
+
+  // 4. Try Gemini (Gemini 2.0 Flash)
+  if (geminiKey) {
+    try {
+      console.warn("Falling back to Gemini (Server Proxy)...");
+      
+      let contents: any[] = [];
+      if (options.chatHistory) {
+        contents = options.chatHistory.map(msg => ({
+          role: msg.role === 'assistant' || msg.role === 'model' ? 'model' : 'user',
+          parts: [{ text: msg.content }]
+        }));
+      } else {
+        contents = [{ role: 'user', parts: [{ text: options.userPrompt || '' }] }];
+      }
+
+      const geminiPayload: any = {
+        contents,
+        ...(options.responseFormatJson ? { generationConfig: { responseMimeType: "application/json" } } : {})
+      };
+
+      if (options.systemPrompt) {
+        geminiPayload.systemInstruction = {
+          parts: [{ text: options.systemPrompt }]
+        };
+      }
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(geminiPayload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text;
+      }
+      console.warn("Gemini request failed. Status:", res.status);
+    } catch (e) {
+      console.warn("Gemini request threw exception:", e);
+    }
+  }
+
+  throw new Error("All AI providers (Mistral, Groq, OpenRouter, and Gemini) failed to generate a response or keys are missing.");
+}
 
 export function setAiModel(model: string) {
   currentModel = model;
@@ -78,28 +228,10 @@ Please return your response in JSON format matching this schema:
 
 Do not include any markdown formatting (like \`\`\`json) outside the JSON. Return only the raw JSON.`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json"
-          }
-        })
+      const text = await requestTieredLlmServer({
+        userPrompt: prompt,
+        responseFormatJson: true
       });
-
-      if (!res.ok) {
-        throw new Error(`Gemini API error: ${res.statusText}`);
-      }
-
-      const result = await res.json();
-      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error("Empty response from Gemini API");
-      }
 
       const insights = JSON.parse(text);
       return {
@@ -111,7 +243,7 @@ Do not include any markdown formatting (like \`\`\`json) outside the JSON. Retur
         aiGenerated: true
       };
     } catch (err) {
-      console.error("Gemini AI API failed, falling back to heuristics:", err);
+      console.error("AI API failed, falling back to heuristics:", err);
     }
   }
 
@@ -164,19 +296,19 @@ Do not include any markdown formatting (like \`\`\`json) outside the JSON. Retur
   };
 }
 
-let chatHistory: { role: string; parts: { text: string }[] }[] = [];
+let chatHistory: { role: string; content: string }[] = [];
 
 export async function askAi(question: string, onProgress?: (status: string) => void) {
   if (!API_KEY) {
-    return "Local AI chat is offline. LLM dependencies and transformers have been removed to optimize deployment size. Add a GEMINI_API_KEY in your .env file to enable live Gemini AI chat.";
+    return "Local AI chat is offline. Add a GROQ_API_KEY in your .env file to enable live Groq AI chat.";
   }
 
-  if (onProgress) onProgress("Gemini is thinking...");
+  if (onProgress) onProgress("AI is thinking...");
 
   try {
     chatHistory.push({
       role: "user",
-      parts: [{ text: question }]
+      content: question
     });
 
     // Keep history bounded to avoid hitting token limits in quick chat
@@ -184,34 +316,18 @@ export async function askAi(question: string, onProgress?: (status: string) => v
       chatHistory = chatHistory.slice(-20);
     }
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        contents: chatHistory
-      })
+    const text = await requestTieredLlmServer({
+      chatHistory
     });
 
-    if (!res.ok) {
-      throw new Error(`Gemini API error: ${res.statusText}`);
-    }
-
-    const result = await res.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      throw new Error("Empty response from Gemini API");
-    }
-
     chatHistory.push({
-      role: "model",
-      parts: [{ text }]
+      role: "assistant",
+      content: text
     });
 
     return text;
   } catch (err: any) {
-    console.error("Gemini Chat failed:", err);
-    return `Chat error: ${err.message || "Failed to contact Gemini API"}`;
+    console.error("AI Chat failed:", err);
+    return `Chat error: ${err.message || "Failed to contact AI API"}`;
   }
 }

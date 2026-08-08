@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { getPackageInfo, getDownloadStats, comparePackages } from "./src/services/npm.js";
-import { getAiInsights } from "./src/services/ai.js";
+import { getAiInsights, requestTieredLlmServer } from "./src/services/ai.js";
 import nodemailer from "nodemailer";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -87,6 +87,27 @@ app.post("/api/npm/ai-insights", async (req, res) => {
   } catch (err: any) {
     console.error("Gemini AI insights error:", err);
     return res.status(500).json({ error: err.message || "AI Insights error" });
+  }
+});
+
+// API Route: Secure multi-tiered AI chat & completions proxy
+app.post("/api/npm/chat", async (req, res) => {
+  try {
+    const { systemPrompt, userPrompt, chatHistory, responseFormatJson } = req.body;
+    const customGroqKey = req.headers["x-custom-groq-key"] as string | undefined;
+
+    const response = await requestTieredLlmServer({
+      systemPrompt,
+      userPrompt,
+      chatHistory,
+      responseFormatJson,
+      customGroqKey
+    });
+
+    return res.json({ text: response });
+  } catch (err: any) {
+    console.error("Secure AI completions proxy error:", err);
+    return res.status(500).json({ error: err.message || "AI completions proxy error" });
   }
 });
 
@@ -206,6 +227,93 @@ app.post("/api/auth/verify-otp", async (req, res) => {
   } catch (err: any) {
     console.error("Error in verify-otp API:", err);
     return res.status(500).json({ error: err.message || "Failed to verify OTP code" });
+  }
+});
+
+// Helper to recursively build dependency tree
+async function buildDependencyTree(
+  pkgName: string,
+  maxDepth = 3,
+  currentDepth = 0,
+  resolved = new Set<string>()
+): Promise<any> {
+  const cleanName = pkgName.trim();
+  if (!cleanName || resolved.has(cleanName) || currentDepth >= maxDepth) {
+    return { name: cleanName, dependencies: [] };
+  }
+
+  // Add current package to prevent circular dependencies in this branch
+  const nextResolved = new Set(resolved);
+  nextResolved.add(cleanName);
+
+  try {
+    const info = await getPackageInfo(cleanName);
+    const deps = info.dependencies || {};
+    const depNames = Object.keys(deps);
+    const children: any[] = [];
+
+    // Only fetch grandchildren if we are not at the max depth
+    if (currentDepth < maxDepth - 1) {
+      // Resolve up to 15 dependencies to avoid hitting rate limits or slow responses
+      const limitNames = depNames.slice(0, 15);
+      const resolvedChildren = await Promise.all(
+        limitNames.map(async (depName) => {
+          const subtree = await buildDependencyTree(depName, maxDepth, currentDepth + 1, nextResolved);
+          return {
+            name: depName,
+            version: deps[depName],
+            dependencies: subtree.dependencies
+          };
+        })
+      );
+      children.push(...resolvedChildren);
+
+      if (depNames.length > 15) {
+        children.push({
+          name: `... and ${depNames.length - 15} more dependencies`,
+          version: "",
+          dependencies: []
+        });
+      }
+    } else {
+      // Depth limit reached, just map them as flat child nodes
+      depNames.forEach((depName) => {
+        children.push({
+          name: depName,
+          version: deps[depName],
+          dependencies: []
+        });
+      });
+    }
+
+    return {
+      name: cleanName,
+      version: info.latestVersion,
+      dependencies: children
+    };
+  } catch (err) {
+    return {
+      name: cleanName,
+      version: "unknown",
+      dependencies: [],
+      error: true
+    };
+  }
+}
+
+// API Route: Get recursive dependency tree
+app.get("/api/npm/package/*/dependency-tree", async (req, res) => {
+  try {
+    const rawPkg = req.params[0];
+    if (!rawPkg) {
+      return res.status(400).json({ error: "Package name is required" });
+    }
+    const pkgName = rawPkg.trim();
+    const tree = await buildDependencyTree(pkgName);
+    return res.json(tree);
+  } catch (err: any) {
+    console.error("Error building dependency tree:", err);
+    return res.status(500).json({ error: err.message || "Server error resolving dependency tree" });
   }
 });
 

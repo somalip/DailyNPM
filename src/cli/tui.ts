@@ -14,6 +14,59 @@ import {
   isSimulationMode
 } from '../services/firebase.js';
 
+// Helper to recursively build dependency tree as colored ASCII text
+async function buildAsciiTree(pkgName: string, maxDepth = 3, currentDepth = 0, resolved = new Set<string>()): Promise<string[]> {
+  const cleanName = pkgName.trim();
+  if (!cleanName || resolved.has(cleanName) || currentDepth >= maxDepth) {
+    return [];
+  }
+
+  const nextResolved = new Set(resolved);
+  nextResolved.add(cleanName);
+
+  try {
+    const info = await getPackageInfo(cleanName);
+    const deps = info.dependencies || {};
+    const depNames = Object.keys(deps);
+    let lines: string[] = [];
+
+    if (currentDepth === 0) {
+      lines.push(`📦  {bold}{cyan-fg}${cleanName}{/cyan-fg}{/bold} (v${info.latestVersion})`);
+    }
+
+    if (currentDepth < maxDepth - 1) {
+      const limitNames = depNames.slice(0, 15);
+      for (let i = 0; i < limitNames.length; i++) {
+        const depName = limitNames[i];
+        const isLast = i === limitNames.length - 1 && depNames.length <= 15;
+        const prefix = isLast ? '└── ' : '├── ';
+        lines.push(`${prefix}${depName} (${deps[depName]})`);
+
+        const childLines = await buildAsciiTree(depName, maxDepth, currentDepth + 1, nextResolved);
+        childLines.forEach((line) => {
+          const childPrefix = isLast ? '    ' : '│   ';
+          lines.push(`${childPrefix}${line}`);
+        });
+      }
+
+      if (depNames.length > 15) {
+        lines.push(`└── ... and ${depNames.length - 15} more dependencies`);
+      }
+    } else {
+      for (let i = 0; i < depNames.length; i++) {
+        const depName = depNames[i];
+        const isLast = i === depNames.length - 1;
+        const prefix = isLast ? '└── ' : '├── ';
+        lines.push(`${prefix}${depName} (${deps[depName]})`);
+      }
+    }
+
+    return lines;
+  } catch (err) {
+    return [`⚠️  ${cleanName} (failed to fetch)`];
+  }
+}
+
 export async function launchTui(initialPackage = 'react') {
   // Initialize Blessed Screen with mouse support
   const screen = blessed.screen({
@@ -153,7 +206,7 @@ export async function launchTui(initialPackage = 'react') {
 
   // 6. Footer Controls Bar (Row 11, Cols 0..11)
   const footerBox = grid.set(11, 0, 1, 12, blessed.box, {
-    content: ' {bold}[P]{/bold} Portfolio  •  {bold}[L]{/bold} Login  •  {bold}[T]{/bold} Track  •  {bold}[U]{/bold} Simulate  •  {bold}[S]{/bold} Search  •  {bold}[C]{/bold} Chat AI  •  {bold}[M]{/bold} Model  •  {bold}[R]{/bold} Refresh  •  {bold}[Q]{/bold} Quit ',
+    content: ' {bold}[P]{/bold} Portfolio  •  {bold}[L]{/bold} Login  •  {bold}[T]{/bold} Track  •  {bold}[U]{/bold} Simulate  •  {bold}[S]{/bold} Search  •  {bold}[C]{/bold} Chat AI  •  {bold}[M]{/bold} Model  •  {bold}[D]{/bold} Deps Tree  •  {bold}[R]{/bold} Refresh  •  {bold}[Q]{/bold} Quit ',
     tags: true,
     style: { fg: 'black', bg: 'white' },
   });
@@ -988,6 +1041,86 @@ export async function launchTui(initialPackage = 'react') {
         loadData(currentPkgName);
       }
     });
+  });
+
+  // Dependency Tree Modal Trigger
+  screen.key(['d'], async () => {
+    const loadingBox = blessed.box({
+      parent: screen,
+      border: 'line',
+      height: 5,
+      width: 40,
+      top: 'center',
+      left: 'center',
+      label: ' Resolving ',
+      content: '\n   ⏳  RESOLVING DEPENDENCY TREE...',
+      tags: true,
+      style: {
+        border: { fg: 'yellow' },
+        label: { fg: 'yellow', bold: true },
+        bg: 'black',
+      },
+    });
+    screen.render();
+
+    try {
+      const treeLines = await buildAsciiTree(currentPkgName);
+      loadingBox.destroy();
+
+      const treeBox = blessed.box({
+        parent: screen,
+        border: 'line',
+        height: 'shrink',
+        maxHeight: 25,
+        width: 60,
+        top: 'center',
+        left: 'center',
+        label: ` Dependency Classifieds: ${currentPkgName} `,
+        content: treeLines.join('\n') + '\n\n   {bold}Press [C] or [Escape] to Close{/bold}',
+        tags: true,
+        scrollable: true,
+        alwaysScroll: true,
+        keys: true,
+        style: {
+          border: { fg: 'yellow' },
+          label: { fg: 'yellow', bold: true },
+          bg: 'black',
+        },
+      });
+      treeBox.focus();
+      screen.render();
+
+      const handleKey = (ch: string, key: any) => {
+        if (key.name === 'c' || key.name === 'escape') {
+          treeBox.destroy();
+          screen.render();
+        }
+      };
+      treeBox.on('keypress', handleKey);
+    } catch (err: any) {
+      loadingBox.destroy();
+      const errBox = blessed.box({
+        parent: screen,
+        border: 'line',
+        height: 6,
+        width: 40,
+        top: 'center',
+        left: 'center',
+        label: ' Error ',
+        content: `\n{red-fg}Failed to fetch tree:{/red-fg}\n${err.message || err}\n\nPress any key to close`,
+        tags: true,
+        style: {
+          border: { fg: 'red' },
+          label: { fg: 'red', bold: true },
+          bg: 'black',
+        },
+      });
+      screen.render();
+      errBox.once('keypress', () => {
+        errBox.destroy();
+        screen.render();
+      });
+    }
   });
 
   // ASCII Splash Screen Modal Box
