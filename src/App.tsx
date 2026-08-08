@@ -58,6 +58,7 @@ export default function App() {
   const [isDepsModalOpen, setIsDepsModalOpen] = useState<boolean>(false);
   const [isCreditsOpen, setIsCreditsOpen] = useState<boolean>(false);
   const [isSecurityOpen, setIsSecurityOpen] = useState<boolean>(false);
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState<boolean>(false);
 
   // Auth State Listener
   useEffect(() => {
@@ -320,7 +321,13 @@ export default function App() {
             <span>Created by <span className="font-bold underline text-[#A82424]">Pranav Somalinga</span></span>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-center md:justify-end">
+            <button
+              onClick={() => setIsHowItWorksOpen(true)}
+              className="px-2.5 py-1 border border-[#1A1918] bg-[#FBF9F5] hover:bg-[#1A1918] hover:text-white transition-colors cursor-pointer uppercase font-bold text-[10px]"
+            >
+              [HOW IT WORKS DISPATCH]
+            </button>
             <button
               onClick={() => setIsCreditsOpen(true)}
               className="px-2.5 py-1 border border-[#1A1918] bg-[#FBF9F5] hover:bg-[#1A1918] hover:text-white transition-colors cursor-pointer uppercase font-bold text-[10px]"
@@ -467,6 +474,54 @@ export default function App() {
             <div className="mt-6 pt-4 border-t border-[#1A1918] text-center font-mono-news">
               <button
                 onClick={() => setIsSecurityOpen(false)}
+                className="px-4 py-2 bg-[#1A1918] hover:bg-[#A82424] text-white font-bold uppercase border-2 border-[#1A1918] shadow-[2px_2px_0px_#1A1918] cursor-pointer"
+              >
+                DISMISS BULLETIN
+              </button>
+            </div>
+          </div>
+        </div>
+      {/* How It Works Dispatch Modal */}
+      {isHowItWorksOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1918]/60 backdrop-blur-xs font-body-news">
+          <div className="relative w-full max-w-lg bg-[#F4F1EA] border-4 border-[#1A1918] shadow-[8px_8px_0px_#1A1918] p-6 text-[#1A1918]">
+            <button 
+              onClick={() => setIsHowItWorksOpen(false)}
+              className="absolute top-4 right-4 p-1 border-2 border-transparent hover:border-[#1A1918] bg-[#EAE6DF] hover:bg-[#A82424] hover:text-white transition-colors cursor-pointer"
+            >
+              [X]
+            </button>
+
+            <div className="text-center pb-4 mb-4 border-b-2 border-dashed border-[#1A1918]">
+              <span className="font-mono-news text-[10px] font-bold uppercase tracking-wider text-[#A82424] flex items-center justify-center gap-1">
+                <Shield className="w-3.5 h-3.5" /> • ALGORITHMIC COMPILER PROTOCOL •
+              </span>
+              <h2 className="font-headline text-3xl font-extrabold tracking-tight uppercase mt-1">
+                HOW IT WORKS
+              </h2>
+            </div>
+
+            <div className="space-y-4 font-serif text-xs leading-relaxed text-justify overflow-y-auto max-h-[60vh] pr-2">
+              <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1">
+                Local Algorithmic NLP Engine
+              </h3>
+              <p>
+                In the absence of a custom API key, the Q&A Bureau employs a deterministic, zero-dependency Natural Language Processing (NLP) algorithm running fully client-side in the browser:
+              </p>
+              <ul className="list-disc pl-5 space-y-1.5 font-mono-news text-[11px] text-[#4A4744]">
+                <li><strong>Tokenization & Normalization:</strong> Input queries are normalized (lowercased, punctuation removed) and tokenized into individual semantic words.</li>
+                <li><strong>Relevance Matrix Scoring:</strong> Tokens are scored against weighted keyword maps across 8 distinct architectural topics (Authorship, Size/Bloat, Licenses, Release timelines, Social metrics, Use cases, Security assessments, and Code snippets).</li>
+                <li><strong>Contextual Modifiers:</strong> The engine flags secondary intent attributes (such as identifying concern about bundle weight, security vulnerabilities, or explicit installation instructions).</li>
+                <li><strong>Dynamic Synthesis Engine:</strong> The resolved primary topic compiles custom responses in real-time, matching database telemetry variables (downloads, dependency chains, versions, created dates, stars) directly into editorial templates.</li>
+              </ul>
+              <p>
+                This ensures completely private, high-speed, local Q&A capability without sending queries to server proxies or external networks unless explicitly opted-in by entering a custom API key.
+              </p>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-[#1A1918] text-center font-mono-news">
+              <button
+                onClick={() => setIsHowItWorksOpen(false)}
                 className="px-4 py-2 bg-[#1A1918] hover:bg-[#A82424] text-white font-bold uppercase border-2 border-[#1A1918] shadow-[2px_2px_0px_#1A1918] cursor-pointer"
               >
                 DISMISS BULLETIN
