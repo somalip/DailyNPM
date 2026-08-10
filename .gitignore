@@ -140,6 +140,5 @@ out
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
-dist/
 .git_secrets_check.txt
 .git_log_api_key.txt
