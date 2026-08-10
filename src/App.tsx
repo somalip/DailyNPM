@@ -414,7 +414,7 @@ export default function App() {
       {/* Security Dispatch Modal */}
       {isSecurityOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1918]/60 backdrop-blur-xs font-body-news">
-          <div className="relative w-full max-w-lg bg-[#F4F1EA] border-4 border-[#1A1918] shadow-[8px_8px_0px_#1A1918] p-6 text-[#1A1918]">
+          <div className="relative w-full max-w-3xl bg-[#F4F1EA] border-4 border-[#1A1918] shadow-[8px_8px_0px_#1A1918] p-6 text-[#1A1918]">
             <button 
               onClick={() => setIsSecurityOpen(false)}
               className="absolute top-4 right-4 p-1 border-2 border-transparent hover:border-[#1A1918] bg-[#EAE6DF] hover:bg-[#A82424] hover:text-white transition-colors cursor-pointer"
@@ -436,14 +436,64 @@ export default function App() {
                 Firestore Security Rulebase
               </h3>
               <p>
-                Our infrastructure enforces strict data isolation and authorization protocols via Firestore security rules:
+                Our infrastructure enforces strict data isolation and authorization protocols via Firestore security rules. Below are the active production rules deployed to our database instance:
               </p>
-              <ul className="list-disc pl-5 space-y-1 font-mono-news text-[11px] text-[#4A4744]">
-                <li><strong>User Isolation:</strong> Reads and writes are only permitted for authenticated owners matching the document UID (`/users/{"{userId}"}`).</li>
-                <li><strong>Input Guardrails:</strong> Display names are limited to 100 characters to prevent buffer issues.</li>
-                <li><strong>Watchlist Restrictions:</strong> A maximum of 50 tracked packages is enforced per account to prevent resource abuse.</li>
-                <li><strong>Immutability:</strong> The system locks critical credentials (UID and email) upon initial registry.</li>
-              </ul>
+
+              <div className="bg-[#1A1918] text-[#F4F1EA] p-3 rounded-xs font-mono text-[10px] leading-normal overflow-x-auto whitespace-pre border-2 border-[#1A1918] select-all">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User Profile Rules
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      allow create: if request.auth != null 
+                    && request.auth.uid == userId
+                    && request.resource.data.uid == userId
+                    && request.resource.data.email is string
+                    && request.resource.data.displayName is string
+                    && request.resource.data.displayName.size() < 100
+                    && request.resource.data.watchlist is list
+                    && request.resource.data.watchlist.size() <= 50;
+
+      allow update: if request.auth != null 
+                    && request.auth.uid == userId
+                    && request.resource.data.uid == userId
+                    && request.resource.data.email == resource.data.email
+                    && request.resource.data.displayName is string
+                    && request.resource.data.displayName.size() < 100
+                    && request.resource.data.watchlist is list
+                    && request.resource.data.watchlist.size() <= 50;
+
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}`}
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <h4 className="font-headline font-bold text-[11px] uppercase text-[#1A1918]">Rules Analysis & Breakdown:</h4>
+                <ul className="list-disc pl-5 space-y-2 font-mono-news text-[11px] text-[#4A4744]">
+                  <li>
+                    <strong>Rules Version & Entrypoint:</strong> <code>rules_version = '2'</code> establishes support for version 2 features (like recursive wildcards). The outer <code>match /databases/{"{database}"}/documents</code> matches all documents in the default database.
+                  </li>
+                  <li>
+                    <strong>Collection & Scope:</strong> <code>match /users/{"{userId}"}</code> binds the document ID to a variable <code>userId</code>, isolating rules to individual user records.
+                  </li>
+                  <li>
+                    <strong>Read Restriction (allow read):</strong> Enforces strict user isolation. A read request is granted only if the client is authenticated (<code>request.auth != null</code>) and their Firebase Authentication UID matches the target user document ID (<code>request.auth.uid == userId</code>).
+                  </li>
+                  <li>
+                    <strong>Creation Gatekeeping (allow create):</strong> Validates that the creating client is authenticated and owns the profile being created. It also sanitizes input data: the stored UID must match the account UID, <code>email</code> and <code>displayName</code> must be strings (with <code>displayName</code> &lt; 100 characters), and <code>watchlist</code> must be a list containing at most 50 items to prevent resource exhaustion.
+                  </li>
+                  <li>
+                    <strong>Update Guardrails (allow update):</strong> Imposes the same validation criteria as creation, with an added immutability constraint: <code>request.resource.data.email == resource.data.email</code> ensures users cannot change their registered email address once created.
+                  </li>
+                  <li>
+                    <strong>Deletion Rule (allow delete):</strong> Restricts profile deletion exclusively to the authenticated owner.
+                  </li>
+                </ul>
+              </div>
 
               <h3 className="font-headline font-bold text-sm uppercase text-[#A82424] border-b border-[#1A1918] pb-1 pt-2">
                 LLM Safety & Bring Your Own Key (BYOK)
